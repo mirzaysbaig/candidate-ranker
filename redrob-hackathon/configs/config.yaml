@@ -1,0 +1,46 @@
+
+
+# Core Application Paths
+paths:
+  raw_candidates: "data/raw/candidates.jsonl"
+  jd_path: "data/raw/job_description.md"
+  index_path: "data/processed/candidate_vectors.faiss"
+  parquet_path: "data/processed/metadata.parquet"
+  output_csv: "data/output/team_xxx.csv"
+
+# AI Model Configuration
+model:
+  name: "all-MiniLM-L6-v2"
+
+# Retrieval Settings
+retrieval:
+  top_k: 2000
+  final_count: 100
+
+
+# L2 Ranking Heuristic Weights
+# These parameters map continuous mathematical curves to raw behavioral signals.
+# In a future state with historical hiring data, these weights would be optimized 
+# by a Learning to Rank (LTR) algorithm like XGBoost.
+
+scoring_weights:
+  # Exponential Time Decay: e^(-rate * days)
+  # 0.005 = approx 138-day half-life for candidate activity
+  time_decay_rate: 0.005
+  
+  # Inverted Sigmoid Penalty for Notice Periods
+  # Penalty starts accelerating around the midpoint (45 days)
+  notice_period_midpoint: 45
+  notice_period_steepness: 0.1
+  
+  # Linear Scaling for Recruiter Response Rate
+  # Unresponsive = 0.7 penalty. Highly responsive = 1.1 bonus.
+  response_rate_base: 0.7
+  response_rate_scale: 0.4
+  
+  # Logarithmic Scaling for GitHub Activity
+  # Diminishing returns scaling: 1.0 + (mult * log(1 + score))
+  github_log_multiplier: 0.02
+  
+  # Flat Multiplier Bonuses
+  open_to_work_bonus: 1.05

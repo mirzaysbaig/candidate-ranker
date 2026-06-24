@@ -1,0 +1,11 @@
+team_name: "team_xxx"
+members:
+  - name: "User"
+    email: "user@example.com"
+project_name: "RedRob Candidate Ranker"
+version: "1.0.0"
+description: "A semantic candidate ranking system utilizing FAISS vector search and Sigmoid-calibrated scoring formulas."
+submitted_at: "2026-06-21T03:52:51Z"
+custom_parameters:
+  faiss_index_type: "FlatL2"
+  embedding_model: "all-MiniLM-L6-v2"

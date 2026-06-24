@@ -1,0 +1,13 @@
+{
+    "python.defaultInterpreterPath": "${workspaceFolder}/redrob-hackathon/.venv/Scripts/python.exe",
+    "python.analysis.extraPaths": [
+        "${workspaceFolder}/redrob-hackathon"
+    ],
+    "python.analysis.autoSearchPaths": true,
+    "files.exclude": {
+        "**/__pycache__": true,
+        "**/*.pyc": true,
+        "**/__init__.py": true
+    },
+    "workbench.colorTheme": "Visual Studio Dark"
+}
