@@ -5,11 +5,14 @@ def generate_reasoning(row: pd.Series) -> str:
     Generates a dynamic, LLM-free reasoning string based on the candidate's 
     mathematical L2 multipliers.
     
+    Inspects all 14 behavioral multipliers and dynamically assembles a
+    1-3 sentence explanation of why the candidate ranked highly (or lowly).
+    
     Args:
         row: A single Pandas Series representing a candidate's features and scores.
         
     Returns:
-        A formatted 1-2 sentence string explaining why they ranked highly.
+        A formatted reasoning string explaining their ranking position.
     """
     
     # 1. Base Reasoning: Start with their semantic score and experience
@@ -37,6 +40,33 @@ def generate_reasoning(row: pd.Series) -> str:
     # Open to Work
     if row.get('open_to_work_flag', False):
         reasoning += " Actively looking for new opportunities."
+
+    # Skill Assessment Competency
+    if row.get('assessment_mult', 1.0) > 1.10:
+        avg_score = row.get('avg_assessment_score', 'N/A')
+        reasoning += f" Scored exceptionally on platform assessments ({avg_score}/100)."
+    
+    # Education Tier
+    edu_tier = row.get('education_tier', 'unknown')
+    if edu_tier == 'tier_1':
+        reasoning += " Graduate of a top-tier institution."
+    elif edu_tier == 'tier_2':
+        reasoning += " Strong academic pedigree."
+    
+    # Certifications
+    cert_count = row.get('certifications_count', 0)
+    if cert_count >= 3:
+        reasoning += f" Holds {cert_count} professional certifications."
+    elif cert_count >= 1:
+        reasoning += " Has relevant certifications."
+    
+    # Interview Reliability
+    if row.get('interview_mult', 1.0) > 1.0:
+        reasoning += " Reliable interview attendance record."
+    
+    # Market Demand
+    if row.get('demand_mult', 1.0) > 1.05:
+        reasoning += " High recruiter demand in the last 30 days."
         
     return reasoning.strip()
 

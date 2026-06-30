@@ -4,6 +4,8 @@ from sentence_transformers import SentenceTransformer
 from pathlib import Path
 import logging
 import yaml
+import zipfile
+import xml.etree.ElementTree as ET
 
 def load_config(config_path: str = 'configs/config.yaml') -> dict:
     """Strictly loads the YAML configuration file."""
@@ -17,8 +19,19 @@ def get_jd_text(config_path: str = 'configs/config.yaml') -> str:
     
     path = Path(jd_path)
     if path.exists():
-        with open(path, 'r', encoding='utf-8') as file:
-            return file.read()
+        if path.suffix == '.docx':
+            text = []
+            with zipfile.ZipFile(path) as docx:
+                tree = ET.fromstring(docx.read('word/document.xml'))
+                ns = {'w': 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'}
+                for p in tree.findall('.//w:p', ns):
+                    p_text = ''.join(n.text for n in p.findall('.//w:t', ns) if n.text)
+                    if p_text:
+                        text.append(p_text)
+            return '\n'.join(text)
+        else:
+            with open(path, 'r', encoding='utf-8') as file:
+                return file.read()
     else:
         logging.warning(f"JD file not found at {jd_path}. Using a fallback AI Engineer intent.")
         return "Senior AI Engineer. Machine Learning Systems, Embeddings, Retrieval Augmented Generation (RAG), Ranking algorithms, LLMs, fine-tuning. Python, backend systems, product engineering."

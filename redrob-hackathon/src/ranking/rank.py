@@ -38,7 +38,8 @@ def run_ranker(candidates_path: str, output_path: str, config_path: str = 'confi
                 output_dir=str(artifact_dir),
                 model_name=config['model']['name'],
                 parquet_filename=parquet_path.name,
-                faiss_filename=index_path.name
+                faiss_filename=index_path.name,
+                indexer_config=config.get('indexer', {}),
             )
             indexer.run()
         except Exception as e:
@@ -83,12 +84,21 @@ def run_ranker(candidates_path: str, output_path: str, config_path: str = 'confi
     logging.info("✅ Ranking Complete! Output is ready for submission.")
 
 if __name__ == "__main__":
-    # The required CLI Argument Parser for Stage 3 evaluation
+    # Command line arguments are optional. If missing, we pull from config.yaml
     parser = argparse.ArgumentParser(description="Redrob Candidate Ranker")
-    parser.add_argument('--candidates', required=True, help="Path to the raw candidates JSONL file")
-    parser.add_argument('--out', required=True, help="Path to save the output CSV")
+    parser.add_argument('--candidates', required=False, help="Path to the raw candidates JSONL file")
+    parser.add_argument('--out', required=False, help="Path to save the output CSV")
+    parser.add_argument('--config', default='configs/config.yaml', help="Path to config file")
     
     args = parser.parse_args()
     
-    # Execute the ranker using the command line arguments
-    run_ranker(args.candidates, args.out)
+    # Load config to get default paths if arguments aren't provided
+    with open(args.config, 'r') as file:
+        config = yaml.safe_load(file)
+        
+    # Use CLI args if provided, otherwise fallback to config.yaml
+    candidates_path = args.candidates if args.candidates else config['paths']['raw_candidates']
+    output_path = args.out if args.out else config['paths']['output_csv']
+    
+    # Execute the ranker
+    run_ranker(candidates_path, output_path, args.config)

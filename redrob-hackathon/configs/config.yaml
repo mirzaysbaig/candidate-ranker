@@ -1,9 +1,7 @@
-
-
 # Core Application Paths
 paths:
-  raw_candidates: "data/raw/candidates.jsonl"
-  jd_path: "data/raw/job_description.md"
+  raw_candidates: "data/raw/helper_candidates.jsonl"
+  jd_path: "data/raw/job_description.docx"
   index_path: "data/processed/candidate_vectors.faiss"
   parquet_path: "data/processed/metadata.parquet"
   output_csv: "data/output/team_xxx.csv"
@@ -14,33 +12,141 @@ model:
 
 # Retrieval Settings
 retrieval:
-  top_k: 2000
-  final_count: 100
+  top_k: 100
+  final_count: 20
+
+# ─── Offline Indexer Configuration ───────────────────────────────────────────
+indexer:
+  # Embedding generation batch size (lower = less RAM, higher = faster on GPU)
+  embedding_batch_size: 32
+
+  # Log progress every N candidates during ingestion
+  progress_log_interval: 200
+
+  # Columns to cast as Pandas Categorical in the Parquet file (reduces memory)
+  categorical_columns:
+    - "current_company_size"
+    - "current_industry"
+    - "country"
+    - "highest_degree"
+    - "education_tier"
+    - "preferred_work_mode"
+
+  # Degree ranking map: higher value = higher degree level
+  degree_rank:
+    "Ph.D": 4
+    "M.Tech": 3
+    "M.E.": 3
+    "M.Sc": 3
+    "MBA": 3
+    "B.Tech": 2
+    "B.E.": 2
+    "B.Sc": 2
+    "BCA": 1
+    "Diploma": 0
+
+  # Institution tier ordering: lower value = more prestigious
+  tier_order:
+    "tier_1": 0
+    "tier_2": 1
+    "tier_3": 2
+    "tier_4": 3
+    "unknown": 3
+
+  # Default fallback values for missing metadata fields
+  defaults:
+    notice_period_days: 90
+    fallback_date: "1970-01-01"
+    missing_score: -1.0
 
 
-# L2 Ranking Heuristic Weights
+# ─── L2 Ranking Heuristic Weights ────────────────────────────────────────────
 # These parameters map continuous mathematical curves to raw behavioral signals.
 # In a future state with historical hiring data, these weights would be optimized 
 # by a Learning to Rank (LTR) algorithm like XGBoost.
 
 scoring_weights:
-  # Exponential Time Decay: e^(-rate * days)
+
+  # ─── Signal 1: Exponential Time Decay ──────────────────────────────────
+  # Formula: e^(-rate * days_inactive)
   # 0.005 = approx 138-day half-life for candidate activity
   time_decay_rate: 0.005
   
-  # Inverted Sigmoid Penalty for Notice Periods
+  # ─── Signal 2: Inverted Sigmoid Penalty for Notice Periods ─────────────
+  # Formula: 1 - (0.5 / (1 + e^(-steepness * (days - midpoint))))
   # Penalty starts accelerating around the midpoint (45 days)
   notice_period_midpoint: 45
   notice_period_steepness: 0.1
   
-  # Linear Scaling for Recruiter Response Rate
+  # ─── Signal 3: Linear Scaling for Recruiter Response Rate ──────────────
+  # Formula: base + (scale * response_rate)
   # Unresponsive = 0.7 penalty. Highly responsive = 1.1 bonus.
   response_rate_base: 0.7
   response_rate_scale: 0.4
   
-  # Logarithmic Scaling for GitHub Activity
-  # Diminishing returns scaling: 1.0 + (mult * log(1 + score))
+  # ─── Signal 4: Logarithmic Scaling for GitHub Activity ─────────────────
+  # Formula: 1.0 + (mult * log(1 + score))
+  # Diminishing returns — prevents one metric from dominating
   github_log_multiplier: 0.02
   
-  # Flat Multiplier Bonuses
+  # ─── Signal 5: Flat Boolean Bonus ──────────────────────────────────────
   open_to_work_bonus: 1.05
+
+  # ─── Signal 6: Sigmoid Normalization for Skill Assessments ─────────────
+  # Formula: base + (range / (1 + e^(-steepness * (score - midpoint))))
+  # Scores below 40 = weak, above 70 = strong. Midpoint transition at 55.
+  assessment_midpoint: 55
+  assessment_steepness: 0.1
+  assessment_base: 0.8
+  assessment_range: 0.4
+
+  # ─── Signal 7: Power Scaling for Profile Completeness ──────────────────
+  # Formula: (score / 100) ^ exponent
+  # Square root (0.5) penalizes sparse profiles heavily, treats 80-100% similarly
+  completeness_exponent: 0.5
+
+  # ─── Signal 8: Discrete Education Tier Bonuses ─────────────────────────
+  # Categorical map — no curve needed. Max ±10% to keep skills dominant.
+  education_tier_bonus:
+    tier_1: 1.10    # IITs, IIMs, BITS — 10% boost
+    tier_2: 1.05    # NITs, good state universities — 5% boost
+    tier_3: 1.00    # Average colleges — neutral
+    tier_4: 0.98    # Below average — slight penalty
+    unknown: 1.00   # No data — neutral
+
+  # ─── Signal 9: Logarithmic Bonus for Certifications ────────────────────
+  # Formula: 1.0 + (mult * log(1 + count))
+  # Same diminishing-returns pattern as GitHub
+  cert_log_multiplier: 0.03
+
+  # ─── Signal 10: Linear Reliability for Interview Completion ────────────
+  # Formula: base + (scale * completion_rate)
+  # No-shows (0%) get 0.85; reliable (100%) get 1.05
+  interview_completion_base: 0.85
+  interview_completion_scale: 0.20
+
+  # ─── Signal 11: Logarithmic Social Proof (Endorsements + Connections) ──
+  # Formula: 1.0 + (e_mult * log(1+endorsements)) + (c_mult * log(1+connections))
+  # Connections are easier to accumulate → lower weight than endorsements
+  endorsement_log_multiplier: 0.008
+  connection_log_multiplier: 0.005
+
+  # ─── Signal 12: Flat Compound Trust Verification ───────────────────────
+  # Each verified flag adds a small compound bonus. Max boost = 1.04 (4%)
+  verified_email_bonus: 0.01
+  verified_phone_bonus: 0.01
+  linkedin_connected_bonus: 0.02
+
+  # ─── Signal 13: Sigmoid Reliability for Offer Acceptance ───────────────
+  # Formula: base + (range / (1 + e^(-steepness * (rate - midpoint))))
+  # Candidates who historically reject offers get penalized
+  offer_acceptance_base: 0.85
+  offer_acceptance_range: 0.20
+  offer_acceptance_midpoint: 0.5
+  offer_acceptance_steepness: 10
+
+  # ─── Signal 14: Logarithmic Market Demand (Search + Saves) ─────────────
+  # Formula: 1.0 + (s_mult * log(1+appearances)) + (r_mult * log(1+saves))
+  # "Saved by recruiter" gets 2x weight — explicit intent vs passive appearance
+  search_appearance_log_multiplier: 0.005
+  saved_by_recruiters_log_multiplier: 0.010
