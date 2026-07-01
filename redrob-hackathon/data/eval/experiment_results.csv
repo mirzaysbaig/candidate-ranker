@@ -1,0 +1,8 @@
+variant,ndcg@10,ndcg@50,precision@10,precision@50,mean_relevance@10,mean_relevance@50,kendall_tau,disqualifier_leakage_count,unlabeled_in_top50,notes
+E0_baseline,0.781,0.8007,0.5,0.16,1.7,0.58,0.3241,0,0,
+E1_skillvocab,0.4113,0.5758,0.4,0.16,1.2,0.58,0.1205,0,10,
+E2_proportional_bonus,0.4804,0.6198,0.4,0.16,1.3,0.58,0.2308,0,10,
+E3_jobhop_grace,0.5514,0.6706,0.5,0.18,1.5,0.62,0.2769,0,10,
+E4_experience_taper,0.5527,0.672,0.5,0.18,1.5,0.62,0.3049,0,9,
+E5_tiered_bonus_final,0.705,0.7769,0.5,0.18,1.6,0.62,0.3268,0,9,
+E6_mpnet_embeddings,0.7188,0.79,0.5,0.18,1.6,0.62,0.3341,0,9,

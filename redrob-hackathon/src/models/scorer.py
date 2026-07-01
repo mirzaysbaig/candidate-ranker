@@ -246,10 +246,15 @@ def apply_behavioral_math(
     scored_df['jd_hard_mult'] = np.where(honeypot_flags > 0, 0.0, 1.0)
     
     # Title-Chaser Filter
+    # A grace margin avoids hard-zeroing candidates whose average job duration is only
+    # marginally below the threshold (e.g. 17.5mo vs an 18mo cutoff extracted from JD
+    # phrasing like "every 1.5 years") -- noise at that scale shouldn't be treated the
+    # same as someone who visibly job-hops every year for title escalation.
     min_dur = jd_rules.get("min_job_duration_months", 0)
     if min_dur > 0:
+        grace_margin = w.get('title_chaser_grace_margin_months', 0)
         avg_dur = scored_df.get('avg_job_duration_months', 999)
-        scored_df['jd_hard_mult'] = np.where(avg_dur < min_dur, 0.0, scored_df['jd_hard_mult'])
+        scored_df['jd_hard_mult'] = np.where(avg_dur < (min_dur - grace_margin), 0.0, scored_df['jd_hard_mult'])
 
     # Consulting Firm Ban Filter (Industry-based)
     # The JD strictly says "only worked at consulting firms... if you have prior product-company experience, that's fine"
@@ -277,22 +282,72 @@ def apply_behavioral_math(
     # Severely penalize pure non-tech careers (e.g. 100% Sales Managers)
     scored_df['jd_hard_mult'] = np.where(non_tech_mask, 0.0, scored_df['jd_hard_mult'])
 
-    # Mandatory Skills Bonus
+    # Mandatory Skills Bonus (proportional, not a flat any-match 2x)
+    # A candidate matching 1-of-6 mandatory skills previously got the identical bonus
+    # as a candidate matching 6-of-6, which rewards a single lucky keyword hit as much
+    # as genuine broad coverage. Bonus now scales with the fraction of mandatory
+    # skills actually present, with a diminishing-returns curve exponent (consistent
+    # with the file's other log-based diminishing-returns signals).
     mandatory_skills = jd_rules.get("mandatory_skills", set())
     if mandatory_skills:
-        def has_mandatory(skills_str):
+        def frac_matched(skills_str):
             if not isinstance(skills_str, str) or not skills_str:
-                return False
-            return any(req in skills_str for req in mandatory_skills)
-            
-        skill_mask = scored_df['all_skills'].apply(has_mandatory)
-        # Apply 2.0 bonus for having mandatory skills
-        scored_df['jd_bonus_mult'] = np.where(skill_mask, 2.0, 1.0)
+                return 0.0
+            hits = sum(1 for req in mandatory_skills if req in skills_str)
+            return hits / len(mandatory_skills)
+
+        match_fraction = scored_df['all_skills'].apply(frac_matched)
+        bonus_max = w.get('mandatory_skill_bonus_max', 2.0)
+        bonus_curve = w.get('mandatory_skill_bonus_curve', 1.0)
+        scored_df['jd_bonus_mult'] = 1.0 + (bonus_max - 1.0) * (match_fraction ** bonus_curve)
     else:
         scored_df['jd_bonus_mult'] = 1.0
 
+    # Nice-to-have skills bonus: smaller magnitude, kept separate from the mandatory
+    # bonus so LLM-tooling name-drops (LangChain, LoRA, ...) can't buy the same credit
+    # as genuine core retrieval/ranking substance.
+    nice_to_have_skills = jd_rules.get("nice_to_have_skills", set())
+    if nice_to_have_skills:
+        def frac_nice(skills_str):
+            if not isinstance(skills_str, str) or not skills_str:
+                return 0.0
+            hits = sum(1 for req in nice_to_have_skills if req in skills_str)
+            return hits / len(nice_to_have_skills)
+
+        nice_fraction = scored_df['all_skills'].apply(frac_nice)
+        nice_bonus_max = w.get('nice_to_have_bonus_max', 1.2)
+        scored_df['jd_bonus_mult'] = scored_df['jd_bonus_mult'] * (1.0 + (nice_bonus_max - 1.0) * nice_fraction)
+
     # =================================================================
-    # FINAL SCORE: Multiplicative composition of all 14 signals
+    # 16. Experience-Fit Multiplier (soft curve, not a hard cliff)
+    # The JD's stated years-of-experience band is explicitly "a range, not a
+    # requirement" -- so this must taper gently rather than zero out candidates
+    # outside it. Full credit (1.0) inside the band, linear taper down to a floor
+    # a configurable number of years outside either edge.
+    # =================================================================
+    experience_band = jd_rules.get("experience_band")
+    if experience_band:
+        min_years, max_years = experience_band
+        years_exp = scored_df.get('years_of_experience', 0).fillna(0)
+        taper_span = w.get('experience_taper_span_years', 5)
+        floor = w.get('experience_taper_floor', 0.85)
+
+        def taper(y):
+            if y < min_years:
+                shortfall = min_years - y
+            elif max_years is not None and y > max_years:
+                shortfall = y - max_years
+            else:
+                return 1.0
+            frac = min(shortfall / taper_span, 1.0)
+            return 1.0 - frac * (1.0 - floor)
+
+        scored_df['experience_fit_mult'] = years_exp.apply(taper)
+    else:
+        scored_df['experience_fit_mult'] = 1.0
+
+    # =================================================================
+    # FINAL SCORE: Multiplicative composition of all signals
     # =================================================================
     scored_df['final_score'] = (
         scored_df['semantic_score']
@@ -311,6 +366,7 @@ def apply_behavioral_math(
         * scored_df['demand_mult']
         * scored_df['jd_hard_mult']
         * scored_df['jd_bonus_mult']
+        * scored_df['experience_fit_mult']
     )
     
     return scored_df

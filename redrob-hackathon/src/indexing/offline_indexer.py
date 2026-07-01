@@ -64,7 +64,7 @@ class OfflineCandidateIndexer:
         # Initialize the Sentence Transformer model (Runs on CPU/GPU automatically)
         logger.info(f"Loading embedding model: {model_name}...")
         self.model = SentenceTransformer(model_name)
-        self.vector_dim = self.model.get_embedding_dimension()
+        self.vector_dim = self.model.get_sentence_embedding_dimension()
 
     def _extract_candidate_features(self, candidate: dict) -> None:
         """

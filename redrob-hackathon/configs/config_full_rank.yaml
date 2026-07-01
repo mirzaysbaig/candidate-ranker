@@ -1,0 +1,81 @@
+paths:
+  raw_candidates: data/raw/helper_candidates.jsonl
+  jd_path: data/raw/job_description.docx
+  index_path: data/processed/candidate_vectors.faiss
+  parquet_path: data/processed/metadata.parquet
+  output_csv: data/output/full_ranking_all_candidates.csv
+model:
+  name: all-MiniLM-L6-v2
+retrieval:
+  top_k: 500
+  final_count: 500
+indexer:
+  embedding_batch_size: 32
+  progress_log_interval: 200
+  categorical_columns:
+  - current_company_size
+  - current_industry
+  - country
+  - highest_degree
+  - education_tier
+  - preferred_work_mode
+  degree_rank:
+    Ph.D: 4
+    M.Tech: 3
+    M.E.: 3
+    M.Sc: 3
+    MBA: 3
+    B.Tech: 2
+    B.E.: 2
+    B.Sc: 2
+    BCA: 1
+    Diploma: 0
+  tier_order:
+    tier_1: 0
+    tier_2: 1
+    tier_3: 2
+    tier_4: 3
+    unknown: 3
+  defaults:
+    notice_period_days: 90
+    fallback_date: '1970-01-01'
+    missing_score: -1.0
+scoring_weights:
+  time_decay_rate: 0.005
+  notice_period_midpoint: 45
+  notice_period_steepness: 0.1
+  response_rate_base: 0.7
+  response_rate_scale: 0.4
+  github_log_multiplier: 0.02
+  open_to_work_bonus: 1.05
+  assessment_midpoint: 55
+  assessment_steepness: 0.1
+  assessment_base: 0.8
+  assessment_range: 0.4
+  completeness_exponent: 0.5
+  education_tier_bonus:
+    tier_1: 1.1
+    tier_2: 1.05
+    tier_3: 1.0
+    tier_4: 0.98
+    unknown: 1.0
+  cert_log_multiplier: 0.03
+  interview_completion_base: 0.85
+  interview_completion_scale: 0.2
+  endorsement_log_multiplier: 0.008
+  connection_log_multiplier: 0.005
+  verified_email_bonus: 0.01
+  verified_phone_bonus: 0.01
+  linkedin_connected_bonus: 0.02
+  offer_acceptance_base: 0.85
+  offer_acceptance_range: 0.2
+  offer_acceptance_midpoint: 0.5
+  offer_acceptance_steepness: 10
+  search_appearance_log_multiplier: 0.005
+  saved_by_recruiters_log_multiplier: 0.01
+  title_chaser_grace_margin_months: 3
+  mandatory_skill_bonus_max: 2.0
+  mandatory_skill_bonus_curve: 1.0
+  nice_to_have_bonus_max: 1.2
+  experience_taper_span_years: 5
+  experience_taper_floor: 0.85

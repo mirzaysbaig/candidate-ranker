@@ -60,7 +60,7 @@ def run_ranker(candidates_path: str, output_path: str, config_path: str = 'confi
     
     # --- 3. Dynamic Parser & Hard Filtering (Deterministic Drops) ---
     logging.info("Parsing JD for dynamic constraints...")
-    jd_rules = parse_jd_rules(jd_text)
+    jd_rules = parse_jd_rules(jd_text, config.get('jd_parsing', {}))
     
     # --- 4. Behavioral Multipliers & Scorer (L2 Ranking) ---
     logging.info("Applying behavioral math modifiers and hard filters...")
