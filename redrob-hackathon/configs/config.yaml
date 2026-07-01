@@ -150,3 +150,27 @@ scoring_weights:
   # "Saved by recruiter" gets 2x weight — explicit intent vs passive appearance
   search_appearance_log_multiplier: 0.005
   saved_by_recruiters_log_multiplier: 0.010
+
+  # ─── Title-Chaser Grace Margin ──────────────────────────────────────────
+  # Months of tolerance below the JD-extracted min_job_duration_months threshold
+  # before the hard filter zeroes a candidate out. Without this, a candidate at
+  # e.g. 17.5mo average vs an 18mo cutoff is treated identically to an obvious
+  # title-chaser at 6mo -- noise at the threshold shouldn't hard-disqualify.
+  title_chaser_grace_margin_months: 3
+
+  # ─── Signal 15: Proportional Mandatory-Skill Bonus ──────────────────────
+  # Formula: 1.0 + (bonus_max - 1.0) * frac_matched^bonus_curve
+  # Replaces the old flat "any single mandatory skill = 2x" bonus, which gave
+  # identical credit to a 1-of-6 keyword match and a 6-of-6 match.
+  # curve = 1.0 is linear; curve < 1.0 gives partial-match credit faster (concave).
+  mandatory_skill_bonus_max: 2.0
+  mandatory_skill_bonus_curve: 1.0
+  nice_to_have_bonus_max: 1.2
+
+  # ─── Signal 16: Experience-Fit Taper ────────────────────────────────────
+  # Soft linear taper for candidates outside the JD's stated experience band.
+  # Never zeroes a candidate out -- the JD explicitly says its 5-9y band is
+  # "a range, not a requirement." Reaches `experience_taper_floor` once a
+  # candidate is `experience_taper_span_years` away from the nearer edge.
+  experience_taper_span_years: 5
+  experience_taper_floor: 0.85

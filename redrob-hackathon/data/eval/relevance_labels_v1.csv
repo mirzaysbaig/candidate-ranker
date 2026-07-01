@@ -1,0 +1,79 @@
+candidate_id,relevance_label,sample_stratum,justification,disqualifier_flag,labeled_by,labeled_date
+CAND_0000273,3,baseline_top50,"Real ML Engineer at BYJU'S (EdTech product co), 5.8y, skills incl. fine-tuning LLMs/feature engineering/learning-to-rank/LlamaIndex",false,claude_as_judge,2026-07-01
+CAND_0000165,3,baseline_top50,"AI Specialist at Mad Street Den (AI/ML product co), 6.8y, tier-1 M.E. ML, strong retrieval/semantic-search/vector-search skillset",false,claude_as_judge,2026-07-01
+CAND_0000426,1,baseline_top50,"QA Engineer at Razorpay; career is QA/Android, no real ML role; FAISS/Pinecone/DataScience read as decorative skill tags not production experience",false,claude_as_judge,2026-07-01
+CAND_0000422,3,baseline_top50,"AI Research Engineer at Haptik (Conversational AI), 6.3y, NLP pipelines + learning-to-rank + reinforcement learning, real ML production role",false,claude_as_judge,2026-07-01
+CAND_0000112,2,baseline_top50,"AI Specialist at Zomato, but only 3.8y (below JD's 5-9y band) though JD says band is soft; genuine ML skillset (deep learning, recommendation systems, TensorFlow)",false,claude_as_judge,2026-07-01
+CAND_0000001,1,baseline_top50,"Backend Engineer at Mindtree (IT-services/consulting); NLP/LoRA/Milvus present as skill tags, no ML production narrative in career history",false,claude_as_judge,2026-07-01
+CAND_0000395,2,baseline_top50,"Analytics Engineer at PhonePe (Fintech product co) with scikit-learn/HF-transformers/Qdrant/data-science; plausible partial fit, not core ML role",false,claude_as_judge,2026-07-01
+CAND_0000190,1,baseline_top50,"Backend Engineer at Paytm; TensorFlow/LoRA/info-retrieval present but role is generic backend, no ML production narrative",false,claude_as_judge,2026-07-01
+CAND_0000010,1,baseline_top50,Data Engineer at Ola with Kubeflow/MLOps/BM25; plausible data-eng+MLOps exposure but not a ranking/retrieval-focused role,false,claude_as_judge,2026-07-01
+CAND_0000014,0,baseline_top50,Frontend Engineer at Zomato; FAISS/OpenSearch appear as unrelated skill tags with no supporting career substance,false,claude_as_judge,2026-07-01
+CAND_0000317,0,baseline_top50,DevOps Engineer; no genuine ML/retrieval substance despite scattered ML skill tags,false,claude_as_judge,2026-07-01
+CAND_0000227,1,baseline_top50,Data Analyst at Stark Industries with LangChain/Qdrant/Learning-to-Rank/Reinforcement-Learning; decent breadth but analyst not engineering role,false,claude_as_judge,2026-07-01
+CAND_0000200,2,baseline_top50,"ML Engineer at Aganitha (AI/ML product co), 4.3y, vector-search/FAISS/RAG/LlamaIndex; genuine but below experience band",false,claude_as_judge,2026-07-01
+CAND_0000390,1,baseline_top50,"Backend Engineer at BYJU'S; Sentence-Transformers/Python present but role is generic backend, no ML narrative",false,claude_as_judge,2026-07-01
+CAND_0000292,0,baseline_top50,"Data Analyst, only 2.0y experience, no real ML production role despite scattered skill tags",false,claude_as_judge,2026-07-01
+CAND_0000184,2,baseline_top50,"Software Engineer at Flipkart (E-commerce), PhD CS tier-1, BM25+Learning-to-Rank+MLflow+Sentence-Transformers is a coherent search/ranking-adjacent skill combination at a real product company",false,claude_as_judge,2026-07-01
+CAND_0000280,0,baseline_top50,Mobile Developer; Weaviate is an isolated unrelated skill tag,false,claude_as_judge,2026-07-01
+CAND_0000352,0,baseline_top50,QA Engineer; no genuine ML substance,false,claude_as_judge,2026-07-01
+CAND_0000249,0,baseline_top50,QA Engineer at HCL (IT-services/consulting); no ML substance,false,claude_as_judge,2026-07-01
+CAND_0000313,0,baseline_top50,"Software Engineer at Wipro (IT-services/consulting); RAG is an isolated skill tag, no substance",false,claude_as_judge,2026-07-01
+CAND_0000023,0,baseline_top50,Software Engineer; no ML substance,false,claude_as_judge,2026-07-01
+CAND_0000343,1,baseline_top50,"Analytics Engineer, currently at Accenture (consulting) but career includes EdTech product roles; Weaviate/Milvus/Deep-Learning present but role is analytics not ML engineering",false,claude_as_judge,2026-07-01
+CAND_0000015,1,baseline_top50,"Software Engineer at Razorpay; PyTorch/Qdrant/ComputerVision present but role/career is generic SWE/DevOps, no ML narrative",false,claude_as_judge,2026-07-01
+CAND_0000331,0,baseline_top50,"DevOps Engineer; semantic-search/fine-tuning-llms are isolated tags, no substance",false,claude_as_judge,2026-07-01
+CAND_0000288,0,baseline_top50,Cloud Engineer; no ML substance,false,claude_as_judge,2026-07-01
+CAND_0000158,0,baseline_top50,"Frontend Engineer; scikit-learn is an isolated tag, no substance",false,claude_as_judge,2026-07-01
+CAND_0000360,0,baseline_top50,Mobile Developer at Mphasis (IT-services/consulting); no ML substance,false,claude_as_judge,2026-07-01
+CAND_0000160,0,baseline_top50,"Software Engineer; QLoRA is an isolated tag, no substance",false,claude_as_judge,2026-07-01
+CAND_0000155,0,baseline_top50,"Software Engineer at Unacademy; Milvus is an isolated tag, no substance",false,claude_as_judge,2026-07-01
+CAND_0000345,2,baseline_top50,Data Engineer at Freshworks (SaaS product co) with FAISS/BM25/Qdrant/MLflow/data-science; coherent search-infra-adjacent skill combination,false,claude_as_judge,2026-07-01
+CAND_0000055,0,baseline_top50,"Full Stack Developer; reinforcement-learning is an isolated tag, no substance",false,claude_as_judge,2026-07-01
+CAND_0000072,0,baseline_top50,Frontend Engineer; no ML substance,false,claude_as_judge,2026-07-01
+CAND_0000408,0,baseline_top50,.NET Developer; no ML substance,false,claude_as_judge,2026-07-01
+CAND_0000038,0,baseline_top50,"Java Developer; Weaviate is an isolated tag, no substance",false,claude_as_judge,2026-07-01
+CAND_0000082,1,baseline_top50,Data Analyst at Wipro (IT-services/consulting); embeddings/LLMs/FAISS/Pinecone present as tags but consulting company + non-engineering role,false,claude_as_judge,2026-07-01
+CAND_0000307,0,baseline_top50,QA Engineer; no ML substance,false,claude_as_judge,2026-07-01
+CAND_0000260,0,baseline_top50,Mobile Developer at HCL (IT-services/consulting); no ML substance,false,claude_as_judge,2026-07-01
+CAND_0000489,0,baseline_top50,"DevOps Engineer; LangChain/semantic-search are isolated tags, no substance",false,claude_as_judge,2026-07-01
+CAND_0000243,0,baseline_top50,"Java Developer; FAISS is an isolated tag, no substance",false,claude_as_judge,2026-07-01
+CAND_0000116,0,baseline_top50,"Full Stack Developer at Tech Mahindra (IT-services/consulting); LoRA is an isolated tag, no substance",false,claude_as_judge,2026-07-01
+CAND_0000182,0,baseline_top50,"QA Engineer; PEFT is an isolated tag, no substance",false,claude_as_judge,2026-07-01
+CAND_0000418,0,baseline_top50,Frontend Engineer at Tech Mahindra (IT-services/consulting); no ML substance,false,claude_as_judge,2026-07-01
+CAND_0000229,1,baseline_top50,"Senior Software Engineer at PhonePe, only 2.2y; Deep-Learning/Computer-Vision/MLflow/Recommendation-Systems is a decent combination but too junior for a meaningful production narrative",false,claude_as_judge,2026-07-01
+CAND_0000134,0,baseline_top50,"Full Stack Developer; Weaviate/RL are isolated tags, no substance",false,claude_as_judge,2026-07-01
+CAND_0000110,0,baseline_top50,"Software Engineer; semantic-search is an isolated tag, no substance",false,claude_as_judge,2026-07-01
+CAND_0000223,0,baseline_top50,Java Developer; no meaningful ML skill signal,false,claude_as_judge,2026-07-01
+CAND_0000060,0,baseline_top50,"Cloud Engineer; LoRA is an isolated tag, no substance",false,claude_as_judge,2026-07-01
+CAND_0000333,0,baseline_top50,Software Engineer; no ML substance,false,claude_as_judge,2026-07-01
+CAND_0000025,0,baseline_top50,"Frontend Engineer at Tech Mahindra (IT-services/consulting); LangChain is an isolated tag, no substance",false,claude_as_judge,2026-07-01
+CAND_0000127,0,baseline_top50,"Mobile Developer; Computer-Vision/Python are isolated tags, no substance",false,claude_as_judge,2026-07-01
+CAND_0000031,3,false_negative_candidate,"Recommendation Systems Engineer at Swiggy; career history shows shipped ranking models (XGBoost/LightGBM) for a discovery feed, a Search Engineer stint at an AI/ML company, and owning a ranking layer for e-commerce search at Zomato -- this is the textbook 'ideal candidate' the JD describes, yet it is excluded from the current top 50",false,claude_as_judge,2026-07-01
+CAND_0000256,0,false_negative_candidate,"Java Developer at Tech Mahindra (IT-services/consulting), 2.3y, single consulting job; scattered ML skill tags with no production narrative",false,claude_as_judge,2026-07-01
+CAND_0000440,2,false_negative_candidate,"Software Engineer at InMobi (AdTech -- a ranking/ads-relevant product-company industry), 7.5y, with MLflow/RAG/VectorSearch/NLP/ReinforcementLearning; plausible partial fit",false,claude_as_judge,2026-07-01
+CAND_0000027,0,false_negative_candidate,"DevOps Engineer at Infosys (IT-services/consulting); scattered ML tags, no substance",false,claude_as_judge,2026-07-01
+CAND_0000210,1,false_negative_candidate,Senior Data Engineer at upGrad (EdTech product co) with Learning-to-Rank/LangChain/LlamaIndex; plausible data-eng with search-adjacent exposure,false,claude_as_judge,2026-07-01
+CAND_0000354,1,false_negative_candidate,"Analytics Engineer, currently at Mindtree (consulting) but career includes Stark/Freshworks product roles; BM25/LoRA/scikit-learn present but analytics not ML engineering role",false,claude_as_judge,2026-07-01
+CAND_0000452,0,false_negative_candidate,"Senior Data Engineer at Cognizant (IT-services/consulting), 2.9y, junior; scattered ML tags, no substance",false,claude_as_judge,2026-07-01
+CAND_0000043,1,false_negative_candidate,"Cloud Engineer at Swiggy with an impressive ML-adjacent skill list (Elasticsearch/OpenSearch/Fine-tuning-LLMs/TensorFlow/PEFT/LangChain) but role is Cloud Engineer not ML production; also has a 5% recruiter response rate and ~6 months inactivity, which the JD explicitly says should down-weight 'not actually available' candidates",false,claude_as_judge,2026-07-01
+CAND_0000083,0,false_positive_risk,"Graphic Designer at TCS; career history is enterprise sales/customer support/business analyst -- non-tech role padded with 17 AI/retrieval keyword tags (RAG, LangChain, Recommendation Systems, etc.) despite zero engineering background -- exactly the keyword-stuffing trap the JD warns about",true,claude_as_judge,2026-07-01
+CAND_0000212,0,false_positive_risk,"Customer Support at Wayne Enterprises, 13y, non-tech career (HR Manager/Business Analyst/sales roles) padded with 22 AI/retrieval keyword tags",true,claude_as_judge,2026-07-01
+CAND_0000312,0,false_positive_risk,"Content Writer at TCS, non-tech career (accounting/operations/sales) padded with 20 AI/retrieval keyword tags",true,claude_as_judge,2026-07-01
+CAND_0000399,0,false_positive_risk,"Business Analyst at Wayne Enterprises, non-tech career (sales/marketing/civil engineering/graphic design) padded with 20 AI/retrieval keyword tags",true,claude_as_judge,2026-07-01
+CAND_0000120,0,false_positive_risk,"Graphic Designer, non-tech career (mechanical design/accounting/sales) padded with 20 AI/retrieval keyword tags",true,claude_as_judge,2026-07-01
+CAND_0000220,0,false_positive_risk,"Marketing Manager, non-tech career, padded with 18 AI/retrieval keyword tags",true,claude_as_judge,2026-07-01
+CAND_0000344,0,false_positive_risk,"Business Analyst, non-tech career, padded with 17 AI/retrieval keyword tags",true,claude_as_judge,2026-07-01
+CAND_0000097,0,false_positive_risk,"Mechanical Engineer at TCS, non-tech career, padded with 17 AI/retrieval keyword tags",true,claude_as_judge,2026-07-01
+CAND_0000330,0,false_positive_risk,"Civil Engineer, non-tech career (operations/graphic design/customer support), padded with 20 AI/retrieval keyword tags",true,claude_as_judge,2026-07-01
+CAND_0000388,0,false_positive_risk,"HR Manager at Wipro, non-tech career, padded with 16 AI/retrieval keyword tags",true,claude_as_judge,2026-07-01
+CAND_0000385,0,random,Project Manager; no ML skills or relevant background,false,claude_as_judge,2026-07-01
+CAND_0000070,0,random,Business Analyst; no ML skills,false,claude_as_judge,2026-07-01
+CAND_0000017,0,random,Accountant at Wipro (IT-services/consulting); no ML skills,false,claude_as_judge,2026-07-01
+CAND_0000446,0,random,HR Manager; no ML skills,false,claude_as_judge,2026-07-01
+CAND_0000167,0,random,"Business Analyst; a single unrelated ML tag (Image Classification), no substance",false,claude_as_judge,2026-07-01
+CAND_0000148,0,random,Content Writer; no ML skills,false,claude_as_judge,2026-07-01
+CAND_0000137,0,random,Mechanical Engineer; no ML skills,false,claude_as_judge,2026-07-01
+CAND_0000087,0,random,"Full Stack Developer at Mindtree (IT-services/consulting), 2.5y junior; MLflow is an isolated tag",false,claude_as_judge,2026-07-01
+CAND_0000444,0,random,"Content Writer; a single unrelated ML tag (Reinforcement Learning), no substance",false,claude_as_judge,2026-07-01
+CAND_0000065,0,random,Project Manager; no ML skills,false,claude_as_judge,2026-07-01

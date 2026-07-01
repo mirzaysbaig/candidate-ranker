@@ -1,0 +1,81 @@
+indexer:
+  categorical_columns:
+  - current_company_size
+  - current_industry
+  - country
+  - highest_degree
+  - education_tier
+  - preferred_work_mode
+  defaults:
+    fallback_date: '1970-01-01'
+    missing_score: -1.0
+    notice_period_days: 90
+  degree_rank:
+    B.E.: 2
+    B.Sc: 2
+    B.Tech: 2
+    BCA: 1
+    Diploma: 0
+    M.E.: 3
+    M.Sc: 3
+    M.Tech: 3
+    MBA: 3
+    Ph.D: 4
+  embedding_batch_size: 32
+  progress_log_interval: 200
+  tier_order:
+    tier_1: 0
+    tier_2: 1
+    tier_3: 2
+    tier_4: 3
+    unknown: 3
+model:
+  name: all-mpnet-base-v2
+paths:
+  index_path: data/processed/candidate_vectors_mpnet.faiss
+  jd_path: data/raw/job_description.docx
+  output_csv: data/output/E6_mpnet.csv
+  parquet_path: data/processed/metadata_mpnet.parquet
+  raw_candidates: data/raw/helper_candidates.jsonl
+retrieval:
+  final_count: 50
+  top_k: 500
+scoring_weights:
+  assessment_base: 0.8
+  assessment_midpoint: 55
+  assessment_range: 0.4
+  assessment_steepness: 0.1
+  cert_log_multiplier: 0.03
+  completeness_exponent: 0.5
+  connection_log_multiplier: 0.005
+  education_tier_bonus:
+    tier_1: 1.1
+    tier_2: 1.05
+    tier_3: 1.0
+    tier_4: 0.98
+    unknown: 1.0
+  endorsement_log_multiplier: 0.008
+  experience_taper_floor: 0.85
+  experience_taper_span_years: 5
+  github_log_multiplier: 0.02
+  interview_completion_base: 0.85
+  interview_completion_scale: 0.2
+  linkedin_connected_bonus: 0.02
+  mandatory_skill_bonus_curve: 1.0
+  mandatory_skill_bonus_max: 2.0
+  nice_to_have_bonus_max: 1.2
+  notice_period_midpoint: 45
+  notice_period_steepness: 0.1
+  offer_acceptance_base: 0.85
+  offer_acceptance_midpoint: 0.5
+  offer_acceptance_range: 0.2
+  offer_acceptance_steepness: 10
+  open_to_work_bonus: 1.05
+  response_rate_base: 0.7
+  response_rate_scale: 0.4
+  saved_by_recruiters_log_multiplier: 0.01
+  search_appearance_log_multiplier: 0.005
+  time_decay_rate: 0.005
+  title_chaser_grace_margin_months: 3
+  verified_email_bonus: 0.01
+  verified_phone_bonus: 0.01
