@@ -182,6 +182,51 @@ class OfflineCandidateIndexer:
         salary_min = salary_range.get("min", self.default_missing_score) if isinstance(salary_range, dict) else self.default_missing_score
         salary_max = salary_range.get("max", self.default_missing_score) if isinstance(salary_range, dict) else self.default_missing_score
 
+        # ── Intrinsic features for dynamic scoring (Honeypot, JD parsing) ──
+        honeypot_flags = 0
+        all_skills = []
+        for skill in candidate.get("skills", []):
+            if isinstance(skill, dict):
+                s_name = skill.get("name", "")
+                if s_name:
+                    all_skills.append(s_name.lower())
+                s_dur = skill.get("duration_months", 0)
+                s_prof = skill.get("proficiency", "")
+                if s_dur == 0 and s_prof in ["advanced", "expert"]:
+                    honeypot_flags += 1
+
+        career = candidate.get("career_history", [])
+        total_career_months = sum(h.get("duration_months", 0) or 0 for h in career if isinstance(h, dict))
+        avg_job_duration_months = total_career_months / max(len(career), 1)
+        if total_career_months > (years_of_exp * 12) + 120:  # 10 years overlap buffer
+            honeypot_flags += 5
+            
+        # Rule 3: Non-Tech title but huge number of advanced technical skills
+        adv_count = 0
+        for skill in candidate.get("skills", []):
+            if isinstance(skill, dict) and skill.get("proficiency") in ["advanced", "expert"]:
+                adv_count += 1
+                
+        title = profile.get("current_title", "").lower()
+        non_tech = any(x in title for x in ['sales', 'marketing', 'hr', 'accountant', 'customer support'])
+        if non_tech and adv_count >= 5:
+            honeypot_flags += 10
+
+        past_companies = []
+        past_industries = []
+        all_job_titles = []
+        for h in career:
+            if isinstance(h, dict):
+                comp = h.get("company", "")
+                if comp:
+                    past_companies.append(comp.lower())
+                ind = h.get("industry", "")
+                if ind:
+                    past_industries.append(ind.lower())
+                tit = h.get("title", "")
+                if tit:
+                    all_job_titles.append(tit.lower())
+
         # ══════════════════════════════════════════════════════════════════
         # 1. METADATA EXTRACTION  (→ Parquet → Pandas → Scorer / Ranker)
         # ══════════════════════════════════════════════════════════════════
@@ -228,6 +273,14 @@ class OfflineCandidateIndexer:
             "verified_email":               signals.get("verified_email", False),
             "verified_phone":               signals.get("verified_phone", False),
             "linkedin_connected":           signals.get("linkedin_connected", False),
+            
+            # ── Intrinsic scoring fields ──
+            "honeypot_flags":               honeypot_flags,
+            "avg_job_duration_months":      float(avg_job_duration_months),
+            "past_companies":               ",".join(past_companies),
+            "past_industries":              ",".join(past_industries),
+            "all_job_titles":               ",".join(all_job_titles),
+            "all_skills":                   ",".join(all_skills),
         }
         self.metadata_list.append(meta)
 

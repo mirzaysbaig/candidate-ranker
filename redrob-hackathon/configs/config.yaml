@@ -12,8 +12,8 @@ model:
 
 # Retrieval Settings
 retrieval:
-  top_k: 100
-  final_count: 20
+  top_k: 500
+  final_count: 50
 
 # ─── Offline Indexer Configuration ───────────────────────────────────────────
 indexer:

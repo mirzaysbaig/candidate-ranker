@@ -11,7 +11,12 @@ def load_config(config_path: str = 'configs/config.yaml') -> dict:
     with open(config_path, 'r') as file:
         return yaml.safe_load(file)
 
-def apply_behavioral_math(df: pd.DataFrame, evaluation_date_str: str = '2026-06-19', config_path: str = 'configs/config.yaml') -> pd.DataFrame:
+def apply_behavioral_math(
+    top_candidates_df: pd.DataFrame,
+    jd_rules: dict,
+    evaluation_date_str: str = '2026-06-25',
+    config_path: str = 'configs/config.yaml'
+) -> pd.DataFrame:
     """
     Applies continuous mathematical curves strictly using variables from config.yaml.
     
@@ -41,7 +46,7 @@ def apply_behavioral_math(df: pd.DataFrame, evaluation_date_str: str = '2026-06-
     14. demand_mult         — Log market signal on search_appearance + saves
     """
     
-    scored_df = df.copy()
+    scored_df = top_candidates_df.copy()
     eval_date = pd.to_datetime(evaluation_date_str)
     
     # Strictly load the configuration dictionary
@@ -234,6 +239,59 @@ def apply_behavioral_math(df: pd.DataFrame, evaluation_date_str: str = '2026-06-
     )
 
     # =================================================================
+    # 15. JD DETERMINISTIC HARD FILTERS & BONUSES
+    # =================================================================
+    # Honeypot Filter
+    honeypot_flags = scored_df.get('honeypot_flags', 0)
+    scored_df['jd_hard_mult'] = np.where(honeypot_flags > 0, 0.0, 1.0)
+    
+    # Title-Chaser Filter
+    min_dur = jd_rules.get("min_job_duration_months", 0)
+    if min_dur > 0:
+        avg_dur = scored_df.get('avg_job_duration_months', 999)
+        scored_df['jd_hard_mult'] = np.where(avg_dur < min_dur, 0.0, scored_df['jd_hard_mult'])
+
+    # Consulting Firm Ban Filter (Industry-based)
+    # The JD strictly says "only worked at consulting firms... if you have prior product-company experience, that's fine"
+    def is_consulting_only(industries_str):
+        if not isinstance(industries_str, str) or not industries_str:
+            return False
+        inds = [i.strip() for i in industries_str.split(',') if i.strip()]
+        if not inds:
+            return False
+        # If EVERY single job they've ever had is 'it services'
+        return all(i == 'it services' for i in inds)
+        
+    consulting_mask = scored_df['past_industries'].apply(is_consulting_only)
+    scored_df['jd_hard_mult'] = np.where(consulting_mask, 0.0, scored_df['jd_hard_mult'])
+    
+    # Role Mismatch Penalty (Sales/HR/Non-Software candidates)
+    # If the candidate has ZERO engineering/developer/data roles in their entire career
+    def is_non_tech(titles_str):
+        if not isinstance(titles_str, str) or not titles_str:
+            return False
+        tech_keywords = ['software', 'backend', 'frontend', 'developer', 'data', 'ml', 'machine learning', 'ai', 'architect', 'programmer', 'cloud', 'devops']
+        return not any(tech in titles_str for tech in tech_keywords)
+        
+    non_tech_mask = scored_df['all_job_titles'].apply(is_non_tech)
+    # Severely penalize pure non-tech careers (e.g. 100% Sales Managers)
+    scored_df['jd_hard_mult'] = np.where(non_tech_mask, 0.0, scored_df['jd_hard_mult'])
+
+    # Mandatory Skills Bonus
+    mandatory_skills = jd_rules.get("mandatory_skills", set())
+    if mandatory_skills:
+        def has_mandatory(skills_str):
+            if not isinstance(skills_str, str) or not skills_str:
+                return False
+            return any(req in skills_str for req in mandatory_skills)
+            
+        skill_mask = scored_df['all_skills'].apply(has_mandatory)
+        # Apply 2.0 bonus for having mandatory skills
+        scored_df['jd_bonus_mult'] = np.where(skill_mask, 2.0, 1.0)
+    else:
+        scored_df['jd_bonus_mult'] = 1.0
+
+    # =================================================================
     # FINAL SCORE: Multiplicative composition of all 14 signals
     # =================================================================
     scored_df['final_score'] = (
@@ -249,9 +307,10 @@ def apply_behavioral_math(df: pd.DataFrame, evaluation_date_str: str = '2026-06-
         * scored_df['cert_mult']
         * scored_df['interview_mult']
         * scored_df['social_mult']
-        * scored_df['trust_mult']
         * scored_df['offer_mult']
         * scored_df['demand_mult']
+        * scored_df['jd_hard_mult']
+        * scored_df['jd_bonus_mult']
     )
     
     return scored_df

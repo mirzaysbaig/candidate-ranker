@@ -6,6 +6,7 @@ import yaml
 
 # Import our custom enterprise microservices
 from src.embeddings.embedding_service import get_jd_text, generate_query_vector
+from src.utils.jd_parser import parse_jd_rules
 from src.retrieval.faiss_search import search_candidates
 from src.models.scorer import apply_behavioral_math 
 from src.utils.helpers import generate_reasoning, format_submission_df
@@ -57,15 +58,19 @@ def run_ranker(candidates_path: str, output_path: str, config_path: str = 'confi
     # --- 2. Semantic Retrieval (FAISS Search) ---
     top_candidates_df = search_candidates(jd_vector, config_path)
     
-    # --- 3. Hard Filtering (Deterministic Drops) ---
-    logging.info("Applying hard heuristic filters...")
-    service_companies = ['tcs', 'wipro', 'infosys', 'cognizant']
-    top_candidates_df = top_candidates_df[~top_candidates_df['current_company'].str.lower().isin(service_companies)]
+    # --- 3. Dynamic Parser & Hard Filtering (Deterministic Drops) ---
+    logging.info("Parsing JD for dynamic constraints...")
+    jd_rules = parse_jd_rules(jd_text)
     
-    # --- 4. Behavioral Multipliers (L2 Ranking) ---
-    logging.info("Applying behavioral math modifiers...")
+    # --- 4. Behavioral Multipliers & Scorer (L2 Ranking) ---
+    logging.info("Applying behavioral math modifiers and hard filters...")
     # (Assuming evaluation date is during the hackathon judging period)
-    scored_df = apply_behavioral_math(top_candidates_df, evaluation_date_str='2026-06-25', config_path=config_path)
+    scored_df = apply_behavioral_math(
+        top_candidates_df, 
+        jd_rules=jd_rules,
+        evaluation_date_str='2026-06-25', 
+        config_path=config_path
+    )
     
     # --- 5. Sort and Slice Top N ---
     logging.info(f"Sorting and selecting the Top {final_count} candidates...")
