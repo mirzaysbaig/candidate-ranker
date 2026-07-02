@@ -34,8 +34,6 @@ def search_candidates(jd_text: str, query_vector: np.ndarray, config_path: str =
     p_career = config['paths']['career_index_path']
     parquet_path = config['paths']['parquet_path']
     p_bm25 = config['paths'].get('bm25_index_path', 'data/processed/bm25_index.pkl')
-    
-    stage1_count = config.get('retrieval', {}).get('stage1_l1_count', 400)
     weights = config['retrieval']['multi_vector_weights']
     
     w_profile = weights.get('profile', 0.20)
@@ -49,6 +47,11 @@ def search_candidates(jd_text: str, query_vector: np.ndarray, config_path: str =
     # 1. Load the FAISS Indices
     logging.info(f"Loading Profile FAISS index...")
     idx_profile = faiss.read_index(str(p_profile))
+    
+    # Dynamically calculate Stage 1 Funnel: 5% of the total dataset, minimum 100 (or config floor)
+    ntotal = idx_profile.ntotal
+    stage1_count = max(100, int(ntotal * 0.05))
+    logging.info(f"Dynamic Stage 1 Funnel: Extracting top {stage1_count} from {ntotal} total candidates.")
     
     logging.info(f"Loading Skills FAISS index...")
     idx_skills = faiss.read_index(str(p_skills))

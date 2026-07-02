@@ -1,11 +1,21 @@
-team_name: "team_xxx"
-members:
-  - name: "User"
-    email: "user@example.com"
-project_name: "RedRob Candidate Ranker"
-version: "1.0.0"
-description: "A semantic candidate ranking system utilizing FAISS vector search and Sigmoid-calibrated scoring formulas."
-submitted_at: "2026-06-21T03:52:51Z"
-custom_parameters:
-  faiss_index_type: "FlatL2"
-  embedding_model: "all-MiniLM-L6-v2"
+Team name: "O(1) Labs"
+Primary contact name: "Mirza YS Baig"
+Primary contact email: "tech.mysb@gmail.com"
+Primary contact phone: "9587247738"
+GitHub repository URL: "https://github.com/USERNAME/REPO" # TODO: Update before submission
+Sandbox / demo link: "https://huggingface.co/spaces/USERNAME/SPACE" # TODO: Update before submission
+AI tools declared: 
+  - "Gemini"
+Compute environment summary: "Windows environment, Local Compute, 16Gb RAM, Python 3.12 (Virtual Env) "
+Team member list:
+  - name: "Mirza YS Baig"
+    email: "tech.mysb@gmail.com"
+  - name: "Pratik Behera"
+    email: "pratikbehera247@gmail.com"
+Methodology summary: |
+  An enterprise-grade, 5-stage recommender system powered by Multi-Vector FAISS and Cross-Encoder re-ranking:
+  - Stage 1: Uses FAISS (dense all-MiniLM) combined with BM25 for high-speed L1 retrieval of the top candidates.
+  - Stage 2: Applies deterministic hard filters to strictly drop non-relevant industries and roles.
+  - Stage 3: Invokes a deep Cross-Encoder (ms-marco-MiniLM-L-6-v2) for profound semantic alignment on the top 200 candidates.
+  - Stage 4: Applies over 15 behavioral modifiers (Gaussian experience bands, logarithmic GitHub scaling, coherence penalties) to generate mathematically normalized scores (0.5 to 1.0).
+  - Stage 5: Generates dynamic, LLM-free reasoning strings summarizing the exact behavioral multipliers that drove each candidate's rank.

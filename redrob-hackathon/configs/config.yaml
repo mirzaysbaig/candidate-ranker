@@ -20,10 +20,8 @@ model:
 
 # Retrieval Settings
 retrieval:
-  stage1_l1_count: 400
-  stage2_hard_filter_count: 200
-  stage3_ce_count: 100
-  stage4_final_count: 50
+  # The final number of candidates to output in submission.csv (Stages 1-3 scale dynamically based on this)
+  stage4_final_count: 100
   
   # Multi-Vector Retrieval Weights (OTF Dense Weighting)
   # Determines how much each vector contributes to the base semantic score

@@ -27,10 +27,7 @@ def run_ranker(candidates_path: str, output_path: str, config_path: str = 'confi
     p_career = Path(config['paths']['career_index_path'])
     parquet_path = Path(config['paths']['parquet_path'])
     
-    # Dynamic Stage Funnel Sizes
-    stage2_count = config.get('retrieval', {}).get('stage2_hard_filter_count', 200)
-    stage3_ce_count = config.get('retrieval', {}).get('stage3_ce_count', 100)
-    stage4_final_count = config.get('retrieval', {}).get('stage4_final_count', 50)
+    # (Dynamic Stage Funnel Sizes will be calculated after FAISS L1 Retrieval)
     # --- 0. Pre-computation Failsafe ---
     if not p_profile.exists() or not p_skills.exists() or not p_career.exists() or not parquet_path.exists():
         logging.error("Offline Multi-FAISS artifacts not found! Run src.indexing.offline_indexer first.")
@@ -46,6 +43,16 @@ def run_ranker(candidates_path: str, output_path: str, config_path: str = 'confi
     
     # --- 2. Semantic Retrieval (FAISS Search) ---
     top_candidates_df = search_candidates(jd_text, jd_vector, config_path)
+    
+    # 🚨 DYNAMIC FUNNEL SIZING 🚨
+    # Dynamically compute slicing stages based on L1 retrieval size to guarantee accuracy on large datasets.
+    # We strictly read Stage 4 from config.yaml to satisfy the exact Hackathon output requirements.
+    stage4_final_count = config.get('retrieval', {}).get('stage4_final_count', 100)
+    
+    stage1_size = len(top_candidates_df)
+    stage2_count = max(stage4_final_count, int(stage1_size * 0.50))
+    stage3_ce_count = max(stage4_final_count, int(stage2_count * 0.50))
+    logging.info(f"Dynamic Funnel Sizes → Stage 2: {stage2_count} | Stage 3 (CE): {stage3_ce_count} | Stage 4 (Final Config): {stage4_final_count}")
     
     # Save the intermediate FAISS ranking for debugging
     faiss_out_path = Path('data/output/faiss_ranking.csv')
@@ -121,6 +128,8 @@ def run_ranker(candidates_path: str, output_path: str, config_path: str = 'confi
         scored_df['final_score'] = 0.5 + 0.5 * (scored_df['final_score'] - min_score) / (max_score - min_score)
     else:
         scored_df['final_score'] = 1.0
+        
+    scored_df['final_score'] = scored_df['final_score'].round(4)
     
     # --- 5. Sort and Slice Top N ---
     logging.info(f"Sorting and selecting the Top {stage4_final_count} candidates...")

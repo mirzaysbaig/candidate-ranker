@@ -325,9 +325,9 @@ def apply_behavioral_math(
     # =================================================================
     base_semantic = scored_df['ce_score'] if 'ce_score' in scored_df.columns else scored_df['semantic_score']
     
-    scored_df['final_score'] = (
-        base_semantic.astype(float)
-        * scored_df['activity_mult'].astype(float)
+    # Calculate the raw combined behavioral multiplier (excluding hard filters)
+    raw_behavioral_multiplier = (
+        scored_df['activity_mult'].astype(float)
         * scored_df['notice_mult'].astype(float)
         * scored_df['response_mult'].astype(float)
         * scored_df['github_mult'].astype(float)
@@ -342,8 +342,29 @@ def apply_behavioral_math(
         * scored_df['demand_mult'].astype(float)
         * scored_df['coherence_mult'].astype(float)
         * scored_df['experience_band_mult'].astype(float)
-        * scored_df['jd_hard_mult'].astype(float)
         * scored_df['jd_bonus_mult'].astype(float)
+    )
+    
+    # 🚨 BONUS DAMPENING 🚨
+    # To prevent behavioral scores from dominating the semantic score, we compress bonuses.
+    # A massive 3.0x raw multiplier becomes a much softer 1.4x (acting as a tie-breaker/nudge).
+    # Penalties (< 1.0) remain at full strength to heavily punish bad behavior.
+    damped_behavioral_multiplier = np.where(
+        raw_behavioral_multiplier > 1.0,
+        1.0 + 0.2 * (raw_behavioral_multiplier - 1.0), # Shrink positive bonuses to 20% of their raw impact
+        raw_behavioral_multiplier # Preserve full penalties
+    )
+    
+    # 🚨 SEMANTIC GATE (Honeypot Prevention) 🚨
+    capped_behavioral_multiplier = np.where(
+        base_semantic < 0.25, np.minimum(damped_behavioral_multiplier, 1.0),
+        np.where(base_semantic < 0.40, np.minimum(damped_behavioral_multiplier, 1.1), damped_behavioral_multiplier)
+    )
+    
+    scored_df['final_score'] = (
+        base_semantic.astype(float)
+        * capped_behavioral_multiplier
+        * scored_df['jd_hard_mult'].astype(float)
     )
     
     return scored_df
