@@ -2,23 +2,49 @@
 paths:
   raw_candidates: "data/raw/helper_candidates.jsonl"
   jd_path: "data/raw/job_description.docx"
-  index_path: "data/processed/candidate_vectors.faiss"
+  profile_index_path: "data/processed/candidate_profile_vectors.faiss"
+  skills_index_path: "data/processed/candidate_skills_vectors.faiss"
+  career_index_path: "data/processed/candidate_career_vectors.faiss"
+  bm25_index_path: "data/processed/bm25_index.pkl"
   parquet_path: "data/processed/metadata.parquet"
-  output_csv: "data/output/team_xxx.csv"
+  output_csv: "data/output/submission.csv"
+  crossencoder_output_csv: "data/output/crossencoder_output.csv"
+
+# Path to dynamic filters config (industry, role, skill classifications)
+filters_path: "configs/filters.yaml"
 
 # AI Model Configuration
 model:
   name: "all-MiniLM-L6-v2"
+  cross_encoder_name: "cross-encoder/ms-marco-MiniLM-L-6-v2"
 
 # Retrieval Settings
 retrieval:
-  top_k: 500
-  final_count: 50
+  stage1_l1_count: 400
+  stage2_hard_filter_count: 200
+  stage3_ce_count: 100
+  stage4_final_count: 50
+  
+  # Multi-Vector Retrieval Weights (OTF Dense Weighting)
+  # Determines how much each vector contributes to the base semantic score
+  multi_vector_weights:
+    profile: 0.20
+    skills: 0.40
+    career: 0.40
 
 # ─── Offline Indexer Configuration ───────────────────────────────────────────
 indexer:
   # Embedding generation batch size (lower = less RAM, higher = faster on GPU)
   embedding_batch_size: 32
+
+# ─── L2 Scoring Thresholds (Coherence Penalty) ──────────────────────────────
+scoring_weights:
+  coherence_high_skill_threshold: 0.40  # Max skills sim is ~0.55 for this model
+  coherence_delta_threshold: 0.10       # Huge gap for dense embeddings
+  coherence_partial_threshold: 0.05
+  coherence_penalty_multiplier: 0.10    # 90% drop
+  coherence_partial_multiplier: 0.60    # 40% drop
+  coherence_neutral_multiplier: 1.00
 
   # Log progress every N candidates during ingestion
   progress_log_interval: 200
@@ -150,3 +176,23 @@ scoring_weights:
   # "Saved by recruiter" gets 2x weight — explicit intent vs passive appearance
   search_appearance_log_multiplier: 0.005
   saved_by_recruiters_log_multiplier: 0.010
+
+  # ─── Signal 15: Skill-Career Coherence (Semantic Delta) ───────────────────
+  # Formula: If (sim_skills - sim_career) > threshold AND sim_skills > high_skill_threshold, then apply penalty.
+  # This detects keyword stuffing mathematically without hardcoded YAML lists.
+  coherence_delta_threshold: 0.10       # Huge gap for dense embeddings
+  coherence_high_skill_threshold: 0.40  # Max skills sim is ~0.55 for this model
+  coherence_penalty_multiplier: 0.10    # Nuke their score if they are stuffing
+  coherence_neutral_multiplier: 1.00    # Default if no stuffing detected
+  coherence_partial_multiplier: 0.60    # Partial penalty if delta is somewhat large (e.g. > 0.20)
+  coherence_partial_threshold: 0.05
+
+
+
+  # ─── Signal 17: Experience Band Fit (Gaussian) ─────────────────────────
+  # Formula: base + (1-base) * exp(-0.5 * ((years - center) / sigma)^2)
+  # Soft penalty for candidates far outside the JD's experience band.
+  # Center and range are dynamically extracted from JD at runtime.
+  experience_band_sigma: 3.0
+  experience_band_base: 0.7
+

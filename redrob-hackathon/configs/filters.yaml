@@ -1,0 +1,93 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# DYNAMIC FILTERS CONFIG — Single Source of Truth
+# ═══════════════════════════════════════════════════════════════════════════════
+# Every classification rule in the ranking pipeline reads from this file.
+# To tune the system for a different JD: edit this file, re-index, re-rank.
+# No Python code changes needed.
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# ─── Industry Classifications ─────────────────────────────────────────────────
+# Used to detect consulting/services-only vs product-company candidates.
+# Matching is done against the "industry" field in career_history entries
+# (e.g., "IT Services", "Food Delivery", "AI/ML").
+industry_classifications:
+  # Industries that indicate consulting/services/outsourcing firms.
+  # If ALL of a candidate's career_history industries match this list → hard penalize.
+  services:
+    - "IT Services"
+    - "it consulting"
+    - "staffing"
+    - "outsourcing"
+    - "business process outsourcing"
+    - "consulting"
+    - "managed services"
+
+  # Industries that indicate product/startup companies → potential boost.
+  product_indicators:
+    - "ai/ml"
+    - "saas"
+    - "fintech"
+    - "e-commerce"
+    - "food delivery"
+    - "edtech"
+    - "healthtech"
+    - "adtech"
+    - "social media"
+    - "gaming"
+    - "cybersecurity"
+    - "conversational ai"
+    - "cloud computing"
+    - "analytics"
+    - "enterprise software"
+
+# ─── Role Classifications ─────────────────────────────────────────────────────
+# Used for non-tech detection, role-relevance scoring, and honeypot logic.
+# Matching is case-insensitive substring match against job titles.
+role_classifications:
+  # Titles that indicate non-tech roles → hard filter (0 score)
+  non_tech_titles:
+    - "sales"
+    - "marketing"
+    - "hr manager"
+    - "human resources"
+    - "accountant"
+    - "accounting"
+    - "customer support"
+    - "operations manager"
+    - "business analyst"
+    - "graphic designer"
+    - "content writer"
+    - "project manager"
+    - "mechanical engineer"
+    - "civil engineer"
+    - "electrical engineer"
+    - "recruiter"
+    - "procurement"
+    - "supply chain"
+    - "logistics"
+
+
+# ─── JD Pattern Matching (Regex strings) ─────────────────────────────────────
+# Used by jd_parser.py to dynamically extract sentiments from ANY JD text
+jd_pattern_matching:
+  consulting_negative_patterns:
+    - "only\\s+worked\\s+at\\s+consulting"
+    - "consulting\\s+firms"
+    - "services\\s+companies"
+    - "tcs|infosys|wipro|accenture|cognizant|capgemini"
+    - "product.?company\\s+experience"
+    - "not\\s+(?:from\\s+)?(?:pure\\s+)?(?:services|consulting)"
+
+  title_chaser_patterns:
+    - "(?:every|switching.*?every)\\s+(\\d+\\.?\\d*)\\s*years"
+    - "(?:every|switching.*?every)\\s+(\\d+)\\s*months"
+
+  experience_range_patterns:
+    - "(\\d+)\\s*[–\\-]\\s*(\\d+)\\s*years"
+    
+  experience_min_patterns:
+    - "(?:minimum|at\\s+least|min\\.?)\\s+(\\d+)\\s*(?:\\+\\s*)?years"
+
+  nice_to_have_sections:
+    - "(?:nice\\s+to\\s+have|we'?d?\\s+like\\s+you\\s+to\\s+have|preferred|bonus|optional)(.*?)(?:\\n\\n|\\Z)"
+    - "(?:won'?t\\s+reject\\s+you\\s+for)(.*?)(?:\\n\\n|\\Z)"

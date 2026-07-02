@@ -9,6 +9,9 @@ import pandas as pd
 import numpy as np
 import faiss
 from sentence_transformers import SentenceTransformer
+import pickle
+from rank_bm25 import BM25Okapi
+
 
 logging.basicConfig(
     level=logging.INFO, 
@@ -18,21 +21,30 @@ logger = logging.getLogger(__name__)
 
 class OfflineCandidateIndexer:
     """
-    Enterprise ETL Pipeline: Extracts raw candidate JSONL, separates metadata for Pandas,
-    and generates dense embeddings for FAISS.
-    
-    All tunable constants (degree rankings, tier ordering, batch sizes, default
-    fallback values, etc.) are read from the ``indexer_config`` dict, which is
-    sourced from the ``indexer:`` section of config.yaml.
+    Enterprise ETL Pipeline (Multi-Vector Retrieval):
+    Extracts raw candidate JSONL, separates metadata for Pandas,
+    and generates THREE distinct dense embeddings (Identity, Capability, Experience) for FAISS.
     """
     
     def __init__(self, input_path: str, output_dir: str, model_name: str,
-            parquet_filename: str, faiss_filename: str,
-            indexer_config: Dict[str, Any] | None = None):
+            parquet_filename: str, 
+            profile_filename: str, skills_filename: str, career_filename: str,
+            indexer_config: Dict[str, Any] | None = None,
+            filters_path: str = 'configs/filters.yaml'):
         self.input_path = Path(input_path)
         self.output_dir = Path(output_dir)
         self.parquet_filename = parquet_filename
-        self.faiss_filename = faiss_filename
+        self.profile_filename = profile_filename
+        self.skills_filename = skills_filename
+        self.career_filename = career_filename
+        
+        # Determine bm25 filename from config if available, else default
+        cfg_paths = {}
+        if indexer_config:
+            pass # indexer_config doesn't have the paths, they are passed as kwargs
+        
+        self.bm25_corpus: List[List[str]] = []
+        self.bm25_filename = "bm25_index.pkl"
         
         # ── Indexer-specific config (sourced from config.yaml → indexer:) ──
         cfg = indexer_config or {}
@@ -54,229 +66,161 @@ class OfflineCandidateIndexer:
         self.default_fallback_date: str = defaults.get("fallback_date", "1970-01-01")
         self.default_missing_score: float = defaults.get("missing_score", -1.0)
         
+        # ── Load dynamic filters from filters.yaml ──
+        self.filters_path = filters_path
+        with open(filters_path, 'r', encoding='utf-8') as f:
+            self.filters = yaml.safe_load(f)
+        logger.info(f"Loaded dynamic filters from: {filters_path}")
+        
         # Ensure the processed output directory exists
         self.output_dir.mkdir(parents=True, exist_ok=True)
         
         # In-memory storage arrays
         self.metadata_list: List[Dict[str, Any]] = []
-        self.text_corpus: List[str] = []
         
-        # Initialize the Sentence Transformer model (Runs on CPU/GPU automatically)
+        # THREE distinct corpora for Multi-FAISS
+        self.profile_corpus: List[str] = []
+        self.skills_corpus: List[str] = []
+        self.career_corpus: List[str] = []
+        
+        # Initialize the Sentence Transformer model
         logger.info(f"Loading embedding model: {model_name}...")
         self.model = SentenceTransformer(model_name)
         self.vector_dim = self.model.get_embedding_dimension()
 
     def _extract_candidate_features(self, candidate: dict) -> None:
-        """
-        Parses a single JSON candidate into structured metadata and a semantic text block.
-        
-        Supports two schemas:
-          1. Real schema (helper_candidates.jsonl / candidate_schema.json):
-             Nested structure with profile, career_history, education, skills (list of dicts),
-             certifications, languages, and redrob_signals.
-          2. Legacy flat schema (candidates.jsonl):
-             Flat dict with id, name, skills (list of strings), experience_years.
-        
-        JSON Tree — Value Fetching Map (real schema):
-        ─────────────────────────────────────────────
-        candidate_id ─────────────────────────────→ meta["candidate_id"]
-        profile
-        ├── anonymized_name ──────────────────────→ meta["name"], semantic text
-        ├── headline ─────────────────────────────→ semantic text
-        ├── summary ──────────────────────────────→ semantic text
-        ├── location ─────────────────────────────→ meta["location"], semantic text
-        ├── country ──────────────────────────────→ meta["country"]
-        ├── years_of_experience ──────────────────→ meta["years_of_experience"], semantic text
-        ├── current_title ────────────────────────→ meta["current_title"], semantic text
-        ├── current_company ──────────────────────→ meta["current_company"], semantic text
-        ├── current_company_size ─────────────────→ meta["current_company_size"]
-        └── current_industry ─────────────────────→ meta["current_industry"], semantic text
-        career_history[] (array of objects)
-        ├── [i].company ──────────────────────────→ semantic text
-        ├── [i].title ────────────────────────────→ semantic text
-        ├── [i].duration_months ──────────────────→ semantic text
-        ├── [i].industry ─────────────────────────→ semantic text
-        └── [i].description ──────────────────────→ semantic text
-        education[] (array of objects)
-        ├── [i].institution ──────────────────────→ semantic text
-        ├── [i].degree ───────────────────────────→ meta["highest_degree"], semantic text
-        ├── [i].field_of_study ───────────────────→ semantic text
-        └── [i].tier ─────────────────────────────→ meta["education_tier"]
-        skills[] (array of objects)
-        ├── [i].name ─────────────────────────────→ semantic text
-        ├── [i].proficiency ──────────────────────→ semantic text
-        └── [i].duration_months ──────────────────→ semantic text
-        certifications[] (array of objects)
-        ├── [i].name ─────────────────────────────→ meta["certifications_count"], semantic text
-        └── [i].issuer ───────────────────────────→ semantic text
-        languages[] (array of objects)
-        └── [i].language + proficiency ───────────→ semantic text
-        redrob_signals
-        ├── profile_completeness_score ───────────→ meta["profile_completeness_score"]
-        ├── signup_date ──────────────────────────→ meta["signup_date"]
-        ├── last_active_date ─────────────────────→ meta["last_active_date"]
-        ├── open_to_work_flag ────────────────────→ meta["open_to_work_flag"]
-        ├── profile_views_received_30d ───────────→ meta["profile_views_received_30d"]
-        ├── applications_submitted_30d ───────────→ meta["applications_submitted_30d"]
-        ├── recruiter_response_rate ──────────────→ meta["recruiter_response_rate"]
-        ├── avg_response_time_hours ──────────────→ meta["avg_response_time_hours"]
-        ├── skill_assessment_scores (dict) ───────→ meta["avg_assessment_score"]
-        │   └── {skill_name: score, ...}              (averaged across all assessed skills)
-        ├── connection_count ─────────────────────→ meta["connection_count"]
-        ├── endorsements_received ────────────────→ meta["endorsements_received"]
-        ├── notice_period_days ───────────────────→ meta["notice_period_days"]
-        ├── expected_salary_range_inr_lpa
-        │   ├── min ──────────────────────────────→ meta["expected_salary_min_lpa"]
-        │   └── max ──────────────────────────────→ meta["expected_salary_max_lpa"]
-        ├── preferred_work_mode ──────────────────→ meta["preferred_work_mode"]
-        ├── willing_to_relocate ──────────────────→ meta["willing_to_relocate"]
-        ├── github_activity_score ────────────────→ meta["github_activity_score"]
-        ├── search_appearance_30d ────────────────→ meta["search_appearance_30d"]
-        ├── saved_by_recruiters_30d ──────────────→ meta["saved_by_recruiters_30d"]
-        ├── interview_completion_rate ────────────→ meta["interview_completion_rate"]
-        ├── offer_acceptance_rate ────────────────→ meta["offer_acceptance_rate"]
-        ├── verified_email ───────────────────────→ meta["verified_email"]
-        ├── verified_phone ───────────────────────→ meta["verified_phone"]
-        └── linkedin_connected ───────────────────→ meta["linkedin_connected"]
-        """
-        # ── Resolve top-level containers ──────────────────────────────────
-        cand_id = candidate.get("candidate_id") or candidate.get("id") or "UNKNOWN"
+        candidate_id = candidate.get("candidate_id") or candidate.get("id", "UNKNOWN_ID")
         profile = candidate.get("profile", {})
+        if not profile and "name" in candidate: 
+            profile = candidate
+            
+        name = profile.get("anonymized_name") or profile.get("name", "Unknown Candidate")
+        
+        # Safe extraction for legacy vs real schema
+        raw_skills = candidate.get("skills", [])
+        if all(isinstance(s, str) for s in raw_skills):
+            all_skills = raw_skills
+        else:
+            all_skills = [s.get("name", "") for s in raw_skills if isinstance(s, dict)]
+            
+        career = candidate.get("career_history", [])
+        education = candidate.get("education", [])
+        certifications = candidate.get("certifications", [])
         signals = candidate.get("redrob_signals", {})
 
-        # Name: real schema uses profile.anonymized_name; legacy uses root name
-        name = profile.get("anonymized_name") or candidate.get("name") or ""
-
-        # Experience: real schema nests inside profile; legacy uses root
-        years_of_exp = profile.get("years_of_experience")
-        if years_of_exp is None:
-            years_of_exp = candidate.get("experience_years", 0.0)
-
-        # ── Education pre-processing ──────────────────────────────────────
-        education_list = candidate.get("education", [])
-        # Determine highest degree and best institution tier for metadata
-        highest_degree = ""
-        best_tier = "unknown"
-        for edu in education_list:
-            if isinstance(edu, dict):
-                deg = edu.get("degree", "")
-                if self.degree_rank.get(deg, -1) > self.degree_rank.get(highest_degree, -1):
-                    highest_degree = deg
-                tier = edu.get("tier", "unknown")
-                if self.tier_order.get(tier, 4) < self.tier_order.get(best_tier, 4):
-                    best_tier = tier
-
-        # ── Certifications pre-processing ─────────────────────────────────
-        certifications = candidate.get("certifications", [])
-
-        # ── Skill assessment average ──────────────────────────────────────
-        assessment_scores = signals.get("skill_assessment_scores", {})
-        if assessment_scores and isinstance(assessment_scores, dict):
-            score_values = [v for v in assessment_scores.values() if isinstance(v, (int, float))]
-            avg_assessment = round(sum(score_values) / len(score_values), 2) if score_values else self.default_missing_score
-        else:
-            avg_assessment = self.default_missing_score
-
-        # ── Salary range unpacking ────────────────────────────────────────
-        salary_range = signals.get("expected_salary_range_inr_lpa", {})
-        salary_min = salary_range.get("min", self.default_missing_score) if isinstance(salary_range, dict) else self.default_missing_score
-        salary_max = salary_range.get("max", self.default_missing_score) if isinstance(salary_range, dict) else self.default_missing_score
-
-        # ── Intrinsic features for dynamic scoring (Honeypot, JD parsing) ──
-        honeypot_flags = 0
-        all_skills = []
-        for skill in candidate.get("skills", []):
-            if isinstance(skill, dict):
-                s_name = skill.get("name", "")
-                if s_name:
-                    all_skills.append(s_name.lower())
-                s_dur = skill.get("duration_months", 0)
-                s_prof = skill.get("proficiency", "")
-                if s_dur == 0 and s_prof in ["advanced", "expert"]:
-                    honeypot_flags += 1
-
-        career = candidate.get("career_history", [])
-        total_career_months = sum(h.get("duration_months", 0) or 0 for h in career if isinstance(h, dict))
-        avg_job_duration_months = total_career_months / max(len(career), 1)
-        if total_career_months > (years_of_exp * 12) + 120:  # 10 years overlap buffer
-            honeypot_flags += 5
-            
-        # Rule 3: Non-Tech title but huge number of advanced technical skills
-        adv_count = 0
-        for skill in candidate.get("skills", []):
-            if isinstance(skill, dict) and skill.get("proficiency") in ["advanced", "expert"]:
-                adv_count += 1
-                
-        title = profile.get("current_title", "").lower()
-        non_tech = any(x in title for x in ['sales', 'marketing', 'hr', 'accountant', 'customer support'])
-        if non_tech and adv_count >= 5:
-            honeypot_flags += 10
+        # ======================================================================
+        # 1. PARSE METADATA (DETERMINISTIC FILTERS & SCORING)
+        # ======================================================================
+        
+        # Map education tier (lower is better in our tier_order map)
+        edu_tier = profile.get("education_tier", "unknown")
+        
+        # Map highest degree to a numeric rank
+        highest_deg = profile.get("highest_degree", "")
+        degree_score = self.degree_rank.get(highest_deg, 0)
+        
+        # Determine current tier of company based on size (crude heuristic)
+        company_size = profile.get("current_company_size", "unknown")
 
         past_companies = []
         past_industries = []
         all_job_titles = []
-        for h in career:
-            if isinstance(h, dict):
-                comp = h.get("company", "")
-                if comp:
-                    past_companies.append(comp.lower())
-                ind = h.get("industry", "")
-                if ind:
-                    past_industries.append(ind.lower())
-                tit = h.get("title", "")
-                if tit:
-                    all_job_titles.append(tit.lower())
+        total_duration_months = 0
+        job_durations = []
+        
+        for job in career:
+            if isinstance(job, dict):
+                comp = job.get('company', '')
+                title = job.get('title', '')
+                ind = job.get('industry', '')
+                dur = job.get('duration_months', 0)
+                
+                if comp: past_companies.append(comp.lower())
+                if title: all_job_titles.append(title.lower())
+                if ind: past_industries.append(ind.lower())
+                
+                if dur > 0:
+                    total_duration_months += dur
+                    job_durations.append(dur)
+                    
+        years_of_exp = profile.get("years_of_experience", 0)
+        if years_of_exp == 0 and total_duration_months > 0:
+            years_of_exp = round(total_duration_months / 12, 1)
+            
+        avg_job_duration = 0
+        if job_durations:
+            avg_job_duration = sum(job_durations) / len(job_durations)
 
-        # ══════════════════════════════════════════════════════════════════
-        # 1. METADATA EXTRACTION  (→ Parquet → Pandas → Scorer / Ranker)
-        # ══════════════════════════════════════════════════════════════════
+        # ── Trust / Boolean Signals ──
+        verified_email = signals.get("verified_email", False)
+        verified_phone = signals.get("verified_phone", False)
+        linkedin_conn = signals.get("linkedin_connected", False)
+        open_to_work = profile.get("open_to_work_flag", False)
+        
+        # ── Honeypot Detection (Tech keywords but non-tech career) ──
+        honeypot_flags = 0
+        
+        role_config = self.filters.get('role_classifications', {})
+        non_tech_titles = role_config.get('non_tech_titles', [])
+        current_title = profile.get("current_title", "")
+        
+        non_tech = False
+        if current_title:
+            title_lower = current_title.lower()
+            if any(nt in title_lower for nt in non_tech_titles):
+                non_tech = True
+        
+        adv_count = sum(1 for s in raw_skills if isinstance(s, dict) and s.get("proficiency") == "advanced")
+        if non_tech and adv_count >= 5:
+            honeypot_flags += 10
+        
+
+
+        # Build Pandas Row
         meta = {
-            # ── Identity ──
-            "id":                           cand_id,
-            "candidate_id":                 cand_id,
+            # ── Core Identity ──
+            "candidate_id":                 candidate_id,
             "name":                         name,
-            # ── Profile numerics & categoricals ──
-            "years_of_experience":          float(years_of_exp),
-            "current_title":                profile.get("current_title", ""),
-            "current_company":              profile.get("current_company", ""),
-            "current_company_size":         profile.get("current_company_size", ""),
-            "current_industry":             profile.get("current_industry", ""),
-            "location":                     profile.get("location", ""),
-            "country":                      profile.get("country", ""),
-            # ── Education summary ──
-            "highest_degree":               highest_degree,
-            "education_tier":               best_tier,
-            # ── Certifications count ──
-            "certifications_count":         len(certifications),
-            # ── Redrob platform signals (full extraction) ──
-            "profile_completeness_score":   signals.get("profile_completeness_score", 0.0),
-            "signup_date":                  signals.get("signup_date", self.default_fallback_date),
+            
+            # ── Logistics & Availability ──
             "last_active_date":             signals.get("last_active_date", self.default_fallback_date),
-            "open_to_work_flag":            signals.get("open_to_work_flag", False),
-            "profile_views_received_30d":   signals.get("profile_views_received_30d", 0),
-            "applications_submitted_30d":   signals.get("applications_submitted_30d", 0),
-            "recruiter_response_rate":      signals.get("recruiter_response_rate", 0.0),
-            "avg_response_time_hours":      signals.get("avg_response_time_hours", 0.0),
-            "avg_assessment_score":         avg_assessment,
-            "connection_count":             signals.get("connection_count", 0),
-            "endorsements_received":        signals.get("endorsements_received", 0),
-            "notice_period_days":           signals.get("notice_period_days", self.default_notice_period),
-            "expected_salary_min_lpa":      salary_min,
-            "expected_salary_max_lpa":      salary_max,
-            "preferred_work_mode":          signals.get("preferred_work_mode", ""),
-            "willing_to_relocate":          signals.get("willing_to_relocate", False),
-            "github_activity_score":        signals.get("github_activity_score", self.default_missing_score),
+            "notice_period_days":           profile.get("notice_period_days", self.default_notice_period),
+            "open_to_work_flag":            open_to_work,
+            
+            # ── Market Demand & Activity ──
             "search_appearance_30d":        signals.get("search_appearance_30d", 0),
             "saved_by_recruiters_30d":      signals.get("saved_by_recruiters_30d", 0),
-            "interview_completion_rate":    signals.get("interview_completion_rate", 0.0),
-            "offer_acceptance_rate":        signals.get("offer_acceptance_rate", self.default_missing_score),
-            "verified_email":               signals.get("verified_email", False),
-            "verified_phone":               signals.get("verified_phone", False),
-            "linkedin_connected":           signals.get("linkedin_connected", False),
+            "recruiter_response_rate":      signals.get("recruiter_response_rate", self.default_missing_score),
             
-            # ── Intrinsic scoring fields ──
+            # ── Competency & Quality ──
+            "github_activity_score":        signals.get("github_activity_score", self.default_missing_score),
+            "avg_assessment_score":         signals.get("avg_assessment_score", self.default_missing_score),
+            "profile_completeness_score":   profile.get("profile_completeness_score", 0),
+            
+            # ── Education & Certifications ──
+            "highest_degree":               highest_deg,
+            "degree_score":                 degree_score,
+            "education_tier":               edu_tier,
+            "certifications_count":         len(certifications),
+            
+            # ── Reliability & Trust ──
+            "interview_completion_rate":    signals.get("interview_completion_rate", self.default_missing_score),
+            "offer_acceptance_rate":        signals.get("offer_acceptance_rate", self.default_missing_score),
+            "verified_email":               verified_email,
+            "verified_phone":               verified_phone,
+            "linkedin_connected":           linkedin_conn,
+            "endorsements_received":        signals.get("endorsements_received", 0),
+            "connection_count":             signals.get("connection_count", 0),
+            
+            # ── Extracted Job History Stats ──
+            "years_of_experience":          years_of_exp,
+            "avg_job_duration_months":      avg_job_duration,
+            "current_company_size":         company_size,
+            "current_industry":             profile.get("current_industry", "unknown"),
+            "country":                      profile.get("country", "unknown"),
+            
+            # ── Filter Lists (for fast JD filtering in Pandas) ──
             "honeypot_flags":               honeypot_flags,
-            "avg_job_duration_months":      float(avg_job_duration_months),
             "past_companies":               ",".join(past_companies),
             "past_industries":              ",".join(past_industries),
             "all_job_titles":               ",".join(all_job_titles),
@@ -284,65 +228,24 @@ class OfflineCandidateIndexer:
         }
         self.metadata_list.append(meta)
 
-        # ══════════════════════════════════════════════════════════════════
-        # 2. SEMANTIC TEXT EXTRACTION  (→ Embedding model → FAISS index)
-        # ══════════════════════════════════════════════════════════════════
+        # ======================================================================
+        # 2. MULTI-VECTOR CORPUS GENERATION
+        # ======================================================================
+        
+        # ── Corpus 1: The "Identity" Vector ──
         headline = profile.get("headline", "")
-        summary = profile.get("summary", "")
+        current_title = profile.get("current_title", "")
+        recent_titles = [job.get("title", "") for job in career[:3] if isinstance(job, dict) and job.get("title")]
+        
+        profile_text = f"Headline: {headline}. Current Role: {current_title}."
+        if recent_titles:
+            profile_text += f" Recent Roles: {', '.join(recent_titles)}."
+        self.profile_corpus.append(profile_text.strip() or "Empty profile")
 
-        # ── Skills: include proficiency & duration for richer embeddings ──
-        skills_raw = candidate.get("skills", [])
-        skills_parts = []
-        for skill in skills_raw:
-            if isinstance(skill, dict):
-                s_name = skill.get("name", "")
-                s_prof = skill.get("proficiency", "")
-                s_dur = skill.get("duration_months", 0)
-                if s_name:
-                    skill_str = s_name
-                    if s_prof:
-                        skill_str += f" ({s_prof}"
-                        if s_dur:
-                            skill_str += f", {s_dur}mo"
-                        skill_str += ")"
-                    skills_parts.append(skill_str)
-            elif isinstance(skill, str):
-                skills_parts.append(skill)
-        skills_text = ", ".join(skills_parts)
-
-        # ── Career history: include description for semantic depth ────────
-        history_parts = []
-        for job in candidate.get("career_history", []):
-            if isinstance(job, dict):
-                job_title = job.get("title", "")
-                company = job.get("company", "")
-                industry = job.get("industry", "")
-                duration = job.get("duration_months", 0)
-                description = job.get("description", "")
-                entry = f"{job_title} at {company}"
-                if industry:
-                    entry += f" ({industry})"
-                if duration:
-                    entry += f" for {duration} months"
-                if description:
-                    entry += f": {description}"
-                history_parts.append(entry)
-        history_text = " | ".join(history_parts)
-
-        # ── Education: degree + field + institution ───────────────────────
-        edu_parts = []
-        for edu in education_list:
-            if isinstance(edu, dict):
-                degree = edu.get("degree", "")
-                field = edu.get("field_of_study", "")
-                institution = edu.get("institution", "")
-                entry = f"{degree} in {field}" if field else degree
-                if institution:
-                    entry += f" from {institution}"
-                edu_parts.append(entry)
-        education_text = "; ".join(edu_parts)
-
-        # ── Certifications ────────────────────────────────────────────────
+        # ── Corpus 2: The "Capability" Vector ──
+        # Top 20 skills to prevent infinite keyword stuffing dilution
+        skills_list = all_skills[:20]
+        
         cert_parts = []
         for cert in certifications:
             if isinstance(cert, dict):
@@ -350,58 +253,52 @@ class OfflineCandidateIndexer:
                 c_issuer = cert.get("issuer", "")
                 if c_name:
                     cert_parts.append(f"{c_name} ({c_issuer})" if c_issuer else c_name)
-        certifications_text = ", ".join(cert_parts)
+        
+        edu_parts = []
+        for edu in education:
+            if isinstance(edu, dict):
+                degree = edu.get("degree", "")
+                field = edu.get("field_of_study", "")
+                if degree and field:
+                    edu_parts.append(f"{degree} in {field}")
+                elif degree:
+                    edu_parts.append(degree)
+                    
+        skills_text = f"Top Skills: {', '.join(skills_list)}."
+        if cert_parts:
+            skills_text += f" Certifications: {', '.join(cert_parts)}."
+        if edu_parts:
+            skills_text += f" Education: {', '.join(edu_parts)}."
+        self.skills_corpus.append(skills_text.strip() or "No skills listed")
 
-        # ── Languages ─────────────────────────────────────────────────────
-        lang_parts = []
-        for lang in candidate.get("languages", []):
-            if isinstance(lang, dict):
-                l_name = lang.get("language", "")
-                l_prof = lang.get("proficiency", "")
-                if l_name:
-                    lang_parts.append(f"{l_name} ({l_prof})" if l_prof else l_name)
-        languages_text = ", ".join(lang_parts)
+        # ── Corpus 3: The "Experience" Vector ──
+        # We explicitly EXCLUDE the profile summary here so candidates cannot
+        # inflate their experience score just by writing "Interested in AI".
+        job_texts = []
+        for job in career:
+            if isinstance(job, dict):
+                title = job.get("title", "")
+                desc = job.get("description", "")
+                if title or desc:
+                    job_texts.append(f"{title} - {desc}".strip(" -"))
+        
+        career_text = ""
+        if job_texts:
+            career_text = f"Experience Details: {' | '.join(job_texts)}."
+        self.career_corpus.append(career_text.strip() or "No experience listed")
 
-        # ── Compile the dense "Resume String" ─────────────────────────────
-        parts = []
-        if name:
-            parts.append(f"Candidate: {name}")
-        if headline:
-            parts.append(f"Headline: {headline}")
-        current_title = profile.get("current_title", "")
-        current_company = profile.get("current_company", "")
-        if current_title and current_company:
-            parts.append(f"Currently: {current_title} at {current_company}")
-        current_industry = profile.get("current_industry", "")
-        if current_industry:
-            parts.append(f"Industry: {current_industry}")
-        location = profile.get("location", "")
-        country = profile.get("country", "")
-        if location or country:
-            parts.append(f"Location: {location}, {country}" if location and country else f"Location: {location or country}")
-        if summary:
-            parts.append(f"Summary: {summary}")
-        if skills_text:
-            parts.append(f"Skills: {skills_text}")
-        if years_of_exp:
-            parts.append(f"Total experience: {years_of_exp} years")
-        if history_text:
-            parts.append(f"Career: {history_text}")
-        if education_text:
-            parts.append(f"Education: {education_text}")
-        if certifications_text:
-            parts.append(f"Certifications: {certifications_text}")
-        if languages_text:
-            parts.append(f"Languages: {languages_text}")
-
-        full_text = ". ".join(parts) + "." if parts else "Empty profile."
-        self.text_corpus.append(full_text)
+        # ══════════════════════════════════════════════════════════════════
+        # 5. BM25 SPARSE CORPUS (The Keyword Search)
+        # ══════════════════════════════════════════════════════════════════
+        # BM25 needs the text split into a list of lowercase words (tokens)
+        full_text_for_keywords = f"{profile_text} {skills_text} {career_text}".lower()
+        tokens = full_text_for_keywords.split() # Simple, lightning-fast tokenization
+        self.bm25_corpus.append(tokens)
 
     def process_data(self):
-        """Reads the JSONL file (supports both raw and gzip) iteratively to save RAM."""
+        """Reads the JSONL file iteratively to save RAM."""
         logger.info(f"Starting ingestion from: {self.input_path}")
         
-        # Check if file is gzipped or plain text based on extension
         is_gzipped = self.input_path.suffix == '.gz'
         open_func = gzip.open if is_gzipped else open
         
@@ -425,7 +322,6 @@ class OfflineCandidateIndexer:
         
         # Optimize date parsing for faster runtime calculations
         df['last_active_date'] = pd.to_datetime(df['last_active_date'], errors='coerce')
-        df['signup_date'] = pd.to_datetime(df['signup_date'], errors='coerce')
         
         # Optimize categorical columns to reduce memory footprint
         for col in self.categorical_columns:
@@ -436,31 +332,45 @@ class OfflineCandidateIndexer:
         logger.info(f"Saving Parquet artifact to: {output_path}")
         df.to_parquet(output_path, engine='pyarrow', index=False)
 
-    def build_vector_index(self):
-        """Passes the corpus through the embedding model and compiles the FAISS index."""
-        logger.info(f"Generating dense vector embeddings (batch_size={self.embedding_batch_size}). This will take some time...")
-        embeddings = self.model.encode(self.text_corpus, batch_size=self.embedding_batch_size, show_progress_bar=True)
+    def _embed_and_save(self, corpus: List[str], filename: str):
+        """Helper method to embed a corpus and save its FAISS index."""
+        logger.info(f"Embedding {filename} (batch_size={self.embedding_batch_size})...")
+        embeddings = self.model.encode(corpus, batch_size=self.embedding_batch_size, show_progress_bar=True)
         
         # FAISS strictly requires float32 arrays
         vector_array = np.array(embeddings).astype('float32')
-        
-        logger.info("Applying L2 Normalization for Cosine Similarity...")
         faiss.normalize_L2(vector_array)
         
-        logger.info("Compiling FAISS IndexFlatIP...")
         index = faiss.IndexFlatIP(self.vector_dim)
         index.add(vector_array)
         
-        output_path = self.output_dir / self.faiss_filename
+        output_path = self.output_dir / filename
         logger.info(f"Saving FAISS artifact to: {output_path}")
         faiss.write_index(index, str(output_path))
+
+    def build_vector_indices(self):
+        """Passes the three corpora through the embedding model and compiles FAISS indices."""
+        self._embed_and_save(self.profile_corpus, self.profile_filename)
+        self._embed_and_save(self.skills_corpus, self.skills_filename)
+        self._embed_and_save(self.career_corpus, self.career_filename)
+
+    def build_bm25_index(self):
+        """Compiles the BM25Okapi model and saves it to a pickle file."""
+        logger.info("Building BM25 index from corpus...")
+        bm25 = BM25Okapi(self.bm25_corpus)
+        
+        output_path = self.output_dir / self.bm25_filename
+        logger.info(f"Saving BM25 artifact to: {output_path}")
+        with open(output_path, 'wb') as f:
+            pickle.dump(bm25, f)
 
     def run(self):
         """Executes the pipeline sequentially."""
         self.process_data()
         self.build_metadata_parquet()
-        self.build_vector_index()
-        logger.info("✅ Phase 1 Complete. Offline artifacts successfully generated.")
+        self.build_vector_indices()
+        self.build_bm25_index()
+        logger.info("✅ Phase 1 Complete. Offline FAISS and BM25 artifacts successfully generated.")
 
 def load_config(config_path: str = 'configs/config.yaml') -> dict:
     """Strictly loads the YAML configuration file."""
@@ -473,9 +383,15 @@ if __name__ == "__main__":
     
     input_file = config['paths']['raw_candidates']
     parquet_path = Path(config['paths']['parquet_path'])
-    faiss_path = Path(config['paths']['index_path'])
+    profile_path = Path(config['paths']['profile_index_path'])
+    skills_path = Path(config['paths']['skills_index_path'])
+    career_path = Path(config['paths']['career_index_path'])
+    
     model_name = config['model']['name']
     indexer_config = config.get('indexer', {})
+    filters_path = config.get('filters_path', 'configs/filters.yaml')
+    
+    bm25_path = Path(config['paths'].get('bm25_index_path', 'data/processed/bm25_index.pkl'))
     
     # Derive output directory and filenames from the config paths
     output_directory = str(parquet_path.parent)
@@ -485,8 +401,12 @@ if __name__ == "__main__":
         output_dir=output_directory,
         model_name=model_name,
         parquet_filename=parquet_path.name,
-        faiss_filename=faiss_path.name,
+        profile_filename=profile_path.name,
+        skills_filename=skills_path.name,
+        career_filename=career_path.name,
         indexer_config=indexer_config,
+        filters_path=filters_path,
     )
+    indexer.bm25_filename = bm25_path.name
     
     indexer.run()

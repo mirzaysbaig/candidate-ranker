@@ -11,8 +11,82 @@ def load_config(config_path: str = 'configs/config.yaml') -> dict:
     with open(config_path, 'r') as file:
         return yaml.safe_load(file)
 
+
+def apply_hard_filters(top_candidates_df, jd_rules, config_path='configs/config.yaml', filters_path='configs/filters.yaml'):
+    """
+    Phase 2: Deterministic Constraints & Hard Filtering.
+    """
+    scored_df = top_candidates_df.copy()
+    
+    with open(config_path, 'r', encoding='utf-8') as f:
+        config = yaml.safe_load(f)
+    with open(filters_path, 'r', encoding='utf-8') as f:
+        filters = yaml.safe_load(f)
+        
+    w = config.get('scoring_weights', {})
+    
+    # EXPERIENCE BAND FIT (Gaussian)
+    exp_range = jd_rules.get("experience_range", (0, 99))
+    exp_center = (exp_range[0] + exp_range[1]) / 2.0
+    exp_sigma = w.get('experience_band_sigma', 3.0)
+    exp_base = w.get('experience_band_base', 0.80)
+    
+    years = scored_df['years_of_experience'].fillna(0)
+    scored_df['experience_band_mult'] = exp_base + (1.0 - exp_base) * np.exp(
+        -0.5 * ((years - exp_center) / max(exp_sigma, 0.1)) ** 2
+    )
+
+    # JD DETERMINISTIC HARD FILTERS
+    honeypot_flags = scored_df.get('honeypot_flags', 0)
+    scored_df['jd_hard_mult'] = np.where(honeypot_flags > 0, 0.0, 1.0)
+    
+    min_dur = jd_rules.get("min_job_duration_months", 0)
+    if min_dur > 0:
+        avg_dur = scored_df.get('avg_job_duration_months', 999)
+        scored_df['jd_hard_mult'] = np.where(avg_dur < min_dur, 0.0, scored_df['jd_hard_mult'])
+
+    service_industries = filters.get('industry_classifications', {}).get('services', [])
+    penalized_industries = jd_rules.get("penalized_industries", set())
+    
+    if penalized_industries:
+        def is_services_only(industries_str):
+            if not isinstance(industries_str, str) or not industries_str:
+                return False
+            inds = [i.strip() for i in industries_str.split(',') if i.strip()]
+            if not inds:
+                return False
+            return all(any(svc.lower() in ind.lower() for svc in service_industries) for ind in inds)
+        
+        consulting_mask = scored_df['past_industries'].apply(is_services_only)
+        scored_df['jd_hard_mult'] = np.where(consulting_mask, 0.0, scored_df['jd_hard_mult'])
+
+    # Role Mismatch Penalty (Sales/HR/Non-Software candidates)
+    def is_non_tech(titles_str):
+        if not isinstance(titles_str, str) or not titles_str:
+            return False
+        tech_keywords = ['software', 'backend', 'frontend', 'developer', 'data', 'ml', 'machine learning', 'ai', 'architect', 'programmer', 'cloud', 'devops']
+        return not any(tech in titles_str for tech in tech_keywords)
+        
+    non_tech_mask = scored_df['all_job_titles'].apply(is_non_tech)
+    scored_df['jd_hard_mult'] = np.where(non_tech_mask, 0.0, scored_df['jd_hard_mult'])
+
+    # Mandatory Skills Bonus
+    mandatory_skills = jd_rules.get("mandatory_skills", set())
+    if mandatory_skills:
+        def has_mandatory(skills_str):
+            if not isinstance(skills_str, str) or not skills_str:
+                return False
+            return any(req in skills_str for req in mandatory_skills)
+            
+        skill_mask = scored_df['all_skills'].apply(has_mandatory)
+        scored_df['jd_bonus_mult'] = np.where(skill_mask, 2.0, 1.0)
+    else:
+        scored_df['jd_bonus_mult'] = 1.0
+        
+    return scored_df
+
 def apply_behavioral_math(
-    top_candidates_df: pd.DataFrame,
+    filtered_df: pd.DataFrame,
     jd_rules: dict,
     evaluation_date_str: str = '2026-06-25',
     config_path: str = 'configs/config.yaml'
@@ -46,7 +120,7 @@ def apply_behavioral_math(
     14. demand_mult         — Log market signal on search_appearance + saves
     """
     
-    scored_df = top_candidates_df.copy()
+    scored_df = filtered_df.copy()
     eval_date = pd.to_datetime(evaluation_date_str)
     
     # Strictly load the configuration dictionary
@@ -239,78 +313,37 @@ def apply_behavioral_math(
     )
 
     # =================================================================
-    # 15. JD DETERMINISTIC HARD FILTERS & BONUSES
+    # 15. JD DETERMINISTIC HARD FILTERS & BONUSES (Already applied in Phase 2, preserving here)
     # =================================================================
-    # Honeypot Filter
-    honeypot_flags = scored_df.get('honeypot_flags', 0)
-    scored_df['jd_hard_mult'] = np.where(honeypot_flags > 0, 0.0, 1.0)
-    
-    # Title-Chaser Filter
-    min_dur = jd_rules.get("min_job_duration_months", 0)
-    if min_dur > 0:
-        avg_dur = scored_df.get('avg_job_duration_months', 999)
-        scored_df['jd_hard_mult'] = np.where(avg_dur < min_dur, 0.0, scored_df['jd_hard_mult'])
-
-    # Consulting Firm Ban Filter (Industry-based)
-    # The JD strictly says "only worked at consulting firms... if you have prior product-company experience, that's fine"
-    def is_consulting_only(industries_str):
-        if not isinstance(industries_str, str) or not industries_str:
-            return False
-        inds = [i.strip() for i in industries_str.split(',') if i.strip()]
-        if not inds:
-            return False
-        # If EVERY single job they've ever had is 'it services'
-        return all(i == 'it services' for i in inds)
-        
-    consulting_mask = scored_df['past_industries'].apply(is_consulting_only)
-    scored_df['jd_hard_mult'] = np.where(consulting_mask, 0.0, scored_df['jd_hard_mult'])
-    
-    # Role Mismatch Penalty (Sales/HR/Non-Software candidates)
-    # If the candidate has ZERO engineering/developer/data roles in their entire career
-    def is_non_tech(titles_str):
-        if not isinstance(titles_str, str) or not titles_str:
-            return False
-        tech_keywords = ['software', 'backend', 'frontend', 'developer', 'data', 'ml', 'machine learning', 'ai', 'architect', 'programmer', 'cloud', 'devops']
-        return not any(tech in titles_str for tech in tech_keywords)
-        
-    non_tech_mask = scored_df['all_job_titles'].apply(is_non_tech)
-    # Severely penalize pure non-tech careers (e.g. 100% Sales Managers)
-    scored_df['jd_hard_mult'] = np.where(non_tech_mask, 0.0, scored_df['jd_hard_mult'])
-
-    # Mandatory Skills Bonus
-    mandatory_skills = jd_rules.get("mandatory_skills", set())
-    if mandatory_skills:
-        def has_mandatory(skills_str):
-            if not isinstance(skills_str, str) or not skills_str:
-                return False
-            return any(req in skills_str for req in mandatory_skills)
-            
-        skill_mask = scored_df['all_skills'].apply(has_mandatory)
-        # Apply 2.0 bonus for having mandatory skills
-        scored_df['jd_bonus_mult'] = np.where(skill_mask, 2.0, 1.0)
-    else:
+    if 'jd_hard_mult' not in scored_df.columns:
+        scored_df['jd_hard_mult'] = 1.0
+    if 'jd_bonus_mult' not in scored_df.columns:
         scored_df['jd_bonus_mult'] = 1.0
 
     # =================================================================
-    # FINAL SCORE: Multiplicative composition of all 14 signals
+    # FINAL SCORE: Multiplicative composition of all signals
     # =================================================================
+    base_semantic = scored_df['ce_score'] if 'ce_score' in scored_df.columns else scored_df['semantic_score']
+    
     scored_df['final_score'] = (
-        scored_df['semantic_score']
-        * scored_df['activity_mult']
-        * scored_df['notice_mult']
-        * scored_df['response_mult']
-        * scored_df['github_mult']
-        * scored_df['open_to_work_bonus']
-        * scored_df['assessment_mult']
-        * scored_df['completeness_mult']
-        * scored_df['education_mult']
-        * scored_df['cert_mult']
-        * scored_df['interview_mult']
-        * scored_df['social_mult']
-        * scored_df['offer_mult']
-        * scored_df['demand_mult']
-        * scored_df['jd_hard_mult']
-        * scored_df['jd_bonus_mult']
+        base_semantic.astype(float)
+        * scored_df['activity_mult'].astype(float)
+        * scored_df['notice_mult'].astype(float)
+        * scored_df['response_mult'].astype(float)
+        * scored_df['github_mult'].astype(float)
+        * scored_df['open_to_work_bonus'].astype(float)
+        * scored_df['assessment_mult'].astype(float)
+        * scored_df['completeness_mult'].astype(float)
+        * scored_df['education_mult'].astype(float)
+        * scored_df['cert_mult'].astype(float)
+        * scored_df['interview_mult'].astype(float)
+        * scored_df['social_mult'].astype(float)
+        * scored_df['offer_mult'].astype(float)
+        * scored_df['demand_mult'].astype(float)
+        * scored_df['coherence_mult'].astype(float)
+        * scored_df['experience_band_mult'].astype(float)
+        * scored_df['jd_hard_mult'].astype(float)
+        * scored_df['jd_bonus_mult'].astype(float)
     )
     
     return scored_df
